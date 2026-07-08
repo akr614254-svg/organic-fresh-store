@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-cream text-charcoal font-body;
+}
+
+::selection {
+  @apply bg-turmeric/40;
+}
+
+/* Visible keyboard focus ring, consistent brand color */
+:focus-visible {
+  outline: 2px solid #40916C;
+  outline-offset: 2px;
+}
