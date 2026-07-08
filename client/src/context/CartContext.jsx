@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth } from './AuthContext'
 
 const CartContext = createContext(null)
 
@@ -6,8 +7,23 @@ const DELIVERY_FEE = 25
 const FREE_DELIVERY_THRESHOLD = 300
 
 export function CartProvider({ children }) {
+  const { user } = useAuth()
   const [items, setItems] = useState([]) // { id, name, price, unit, emoji, qty }
   const [isDrawerOpen, setDrawerOpen] = useState(false)
+  const previousUserId = useRef(user?._id ?? user?.id ?? null)
+
+  // The cart only ever lives in memory (not localStorage), but React state
+  // doesn't automatically reset just because someone logs out — the app
+  // never unmounts. Without this, logging out (or logging in as someone
+  // else) leaves the previous person's cart count showing. Clear it
+  // whenever the logged-in identity actually changes.
+  useEffect(() => {
+    const currentUserId = user?._id ?? user?.id ?? null
+    if (currentUserId !== previousUserId.current) {
+      setItems([])
+      previousUserId.current = currentUserId
+    }
+  }, [user])
 
   const addToCart = (product, qty = 1) => {
     setItems((prev) => {

@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import asyncHandler from 'express-async-handler'
-import razorpay from '../config/razorpay.js'
+import getRazorpay from '../config/razorpay.js'
 import Order from '../models/Order.js'
 
 // @route  POST /api/orders/:id/pay
@@ -27,7 +27,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     throw new Error('This order has already been paid')
   }
 
-  const razorpayOrder = await razorpay.orders.create({
+  const razorpayOrder = await getRazorpay().orders.create({
     amount: Math.round(order.total * 100), // paise
     currency: 'INR',
     receipt: order.orderNumber,
