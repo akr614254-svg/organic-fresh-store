@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
+import StarRating from '../components/StarRating'
 import { vegetables, categories } from '../data/vegetables'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
+import { useAuth } from '../context/AuthContext'
+import { fetchReviews, submitReview, deleteMyReview } from '../services/reviewService'
 
 export default function ProductDetails() {
   const { id } = useParams()
@@ -11,6 +14,71 @@ export default function ProductDetails() {
   const [qty, setQty] = useState(1)
   const { addToCart } = useCart()
   const { isWishlisted, toggleWishlist } = useWishlist()
+  const { isAuthenticated, user } = useAuth()
+
+  const [reviews, setReviews] = useState([])
+  const [ratingSummary, setRatingSummary] = useState({ avgRating: null, count: 0 })
+  const [reviewsLoading, setReviewsLoading] = useState(true)
+  const [myRating, setMyRating] = useState(0)
+  const [myComment, setMyComment] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+
+  const myExistingReview = reviews.find((r) => r.user === user?.id)
+
+  useEffect(() => {
+    if (!product) return
+    setReviewsLoading(true)
+    fetchReviews(product.id)
+      .then(({ reviews, summary }) => {
+        setReviews(reviews)
+        setRatingSummary(summary)
+        const mine = reviews.find((r) => r.user === user?.id)
+        if (mine) {
+          setMyRating(mine.rating)
+          setMyComment(mine.comment)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setReviewsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id])
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault()
+    if (!myRating) {
+      setReviewError('Pick a star rating first.')
+      return
+    }
+    setSubmittingReview(true)
+    setReviewError('')
+    try {
+      const saved = await submitReview(product.id, { rating: myRating, comment: myComment })
+      setReviews((prev) => {
+        const withoutMine = prev.filter((r) => r.user !== user.id)
+        return [saved, ...withoutMine]
+      })
+      const { summary } = await fetchReviews(product.id)
+      setRatingSummary(summary)
+    } catch (err) {
+      setReviewError(err.message)
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
+  const handleDeleteReview = async () => {
+    try {
+      await deleteMyReview(product.id)
+      setReviews((prev) => prev.filter((r) => r.user !== user.id))
+      setMyRating(0)
+      setMyComment('')
+      const { summary } = await fetchReviews(product.id)
+      setRatingSummary(summary)
+    } catch (err) {
+      setReviewError(err.message)
+    }
+  }
 
   if (!product) {
     return (
@@ -55,7 +123,11 @@ export default function ProductDetails() {
           )}
           <h1 className="font-display text-3xl md:text-4xl text-forest font-semibold">{product.name}</h1>
           <div className="flex items-center gap-3 mt-2 text-sm text-charcoal/60">
-            <span className="text-turmeric">★ {product.rating}</span>
+            <span className="text-turmeric flex items-center gap-1">
+              <StarRating value={ratingSummary.avgRating ?? product.rating} />
+              {ratingSummary.avgRating ?? product.rating}
+              {ratingSummary.count > 0 && <span className="text-charcoal/40">({ratingSummary.count})</span>}
+            </span>
             <span>·</span>
             <span>{category?.name}</span>
           </div>
@@ -109,6 +181,69 @@ export default function ProductDetails() {
             <div className="bg-white border border-forest/10 rounded-2xl p-3">🚚 Delivered in 90 min</div>
             <div className="bg-white border border-forest/10 rounded-2xl p-3">🌱 100% organic sourced</div>
           </div>
+        </div>
+      </div>
+
+      {/* Reviews */}
+      <div className="mt-16 max-w-2xl">
+        <h2 className="font-display text-2xl text-forest font-semibold mb-6">
+          Reviews {ratingSummary.count > 0 && <span className="text-charcoal/40 text-lg">({ratingSummary.count})</span>}
+        </h2>
+
+        {isAuthenticated ? (
+          <form onSubmit={handleSubmitReview} className="bg-white border border-forest/10 rounded-2xl p-5 mb-6">
+            <p className="text-sm font-medium text-forest mb-2">
+              {myExistingReview ? 'Edit your review' : 'Leave a review'}
+            </p>
+            <StarRating value={myRating} onChange={setMyRating} interactive size="text-2xl" />
+            <textarea
+              value={myComment}
+              onChange={(e) => setMyComment(e.target.value)}
+              placeholder="What did you think? (optional)"
+              rows={3}
+              className="w-full mt-3 bg-cream/50 border border-forest/15 rounded-xl px-4 py-2.5 text-sm outline-none focus-visible:border-leaf resize-none"
+            />
+            {reviewError && <p className="text-xs text-red-500 mt-2">{reviewError}</p>}
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                type="submit"
+                disabled={submittingReview}
+                className="bg-forest text-cream text-sm font-medium px-5 py-2 rounded-full hover:bg-leaf transition-colors disabled:opacity-50"
+              >
+                {submittingReview ? 'Saving…' : myExistingReview ? 'Update review' : 'Submit review'}
+              </button>
+              {myExistingReview && (
+                <button type="button" onClick={handleDeleteReview} className="text-xs text-red-500 hover:underline">
+                  Delete my review
+                </button>
+              )}
+            </div>
+          </form>
+        ) : (
+          <p className="text-sm text-charcoal/50 mb-6">
+            <Link to="/login" className="text-leaf hover:underline">Log in</Link> to leave a review.
+          </p>
+        )}
+
+        {reviewsLoading && <p className="text-sm text-charcoal/40">Loading reviews…</p>}
+
+        {!reviewsLoading && reviews.length === 0 && (
+          <p className="text-sm text-charcoal/40">No reviews yet — be the first to share your thoughts.</p>
+        )}
+
+        <div className="flex flex-col gap-4">
+          {reviews.map((r) => (
+            <div key={r._id} className="border-b border-forest/10 pb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-forest">{r.userName}</span>
+                <StarRating value={r.rating} size="text-sm" />
+              </div>
+              {r.comment && <p className="text-sm text-charcoal/60 mt-1">{r.comment}</p>}
+              <p className="text-xs text-charcoal/30 mt-1">
+                {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 

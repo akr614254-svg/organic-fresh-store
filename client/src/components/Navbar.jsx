@@ -77,6 +77,12 @@ export default function Navbar() {
               >
                 Hi, {user.name.split(' ')[0]}
               </Link>
+              <Link
+                to="/account"
+                className="text-sm font-medium text-charcoal/50 hover:text-forest transition-colors"
+              >
+                Account
+              </Link>
               <button
                 onClick={logout}
                 className="text-sm font-medium text-charcoal/50 hover:text-forest transition-colors"
@@ -146,6 +152,11 @@ export default function Navbar() {
                   <li>
                     <Link to="/orders" onClick={() => setOpen(false)}>
                       Hi, {user.name.split(' ')[0]} · Your orders
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/account" onClick={() => setOpen(false)}>
+                      Account & addresses
                     </Link>
                   </li>
                   <li>

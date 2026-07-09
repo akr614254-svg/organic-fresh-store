@@ -14,3 +14,13 @@ export async function fetchOrderById(id) {
   const { data } = await api.get(`/orders/${id}`)
   return data
 }
+
+export async function cancelOrder(id) {
+  const { data } = await api.put(`/orders/${id}/cancel`)
+  return data
+}
+
+export async function requestReturn(id, reason) {
+  const { data } = await api.put(`/orders/${id}/return`, { reason })
+  return data
+}

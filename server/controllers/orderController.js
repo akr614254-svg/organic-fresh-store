@@ -91,6 +91,99 @@ export const getMyOrders = asyncHandler(async (req, res) => {
   res.json(orders)
 })
 
+// @route  PUT /api/orders/:id/cancel
+// @access Private (owner only) — self-service cancellation, only while the
+// order hasn't left the shop yet. Once it's packed/out for delivery, the
+// customer needs a return request instead (see requestReturn below).
+const CANCELLABLE_STATUSES = ['placed', 'confirmed']
+
+export const cancelOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id)
+  if (!order) {
+    res.status(404)
+    throw new Error('Order not found')
+  }
+  if (order.user.toString() !== req.user._id.toString()) {
+    res.status(403)
+    throw new Error('Not authorized to cancel this order')
+  }
+  if (!CANCELLABLE_STATUSES.includes(order.status)) {
+    res.status(400)
+    throw new Error(`Order can no longer be cancelled — it's already "${order.status.replace(/_/g, ' ')}". Try a return request instead.`)
+  }
+
+  order.status = 'cancelled'
+  await order.save()
+  res.json(order)
+})
+
+// @route  PUT /api/orders/:id/return
+// @access Private (owner only) — request a return/refund after delivery
+export const requestReturn = asyncHandler(async (req, res) => {
+  const { reason } = req.body
+  const order = await Order.findById(req.params.id)
+  if (!order) {
+    res.status(404)
+    throw new Error('Order not found')
+  }
+  if (order.user.toString() !== req.user._id.toString()) {
+    res.status(403)
+    throw new Error('Not authorized for this order')
+  }
+  if (order.status !== 'delivered') {
+    res.status(400)
+    throw new Error('Returns can only be requested for delivered orders')
+  }
+  if (order.returnRequest.status === 'requested') {
+    res.status(400)
+    throw new Error('A return request is already pending for this order')
+  }
+
+  order.returnRequest = { status: 'requested', reason: reason || '', requestedAt: new Date() }
+  await order.save()
+
+  // Let admins know the same way they hear about new orders — the return
+  // itself needs a human decision, so this rides the same alert channels.
+  notifyAdminsOfNewOrder({
+    orderNumber: `RETURN-${order.orderNumber}`,
+    total: order.total,
+    deliveryAddress: order.deliveryAddress,
+    deliverySlot: order.deliverySlot,
+    items: [{ name: `Return requested: ${reason || 'no reason given'}`, qty: 1, price: 0 }],
+  })
+
+  res.json(order)
+})
+
+// @route  PUT /api/orders/:id/return/resolve
+// @access Private/Admin
+export const resolveReturn = asyncHandler(async (req, res) => {
+  const { approve } = req.body
+  const order = await Order.findById(req.params.id)
+  if (!order) {
+    res.status(404)
+    throw new Error('Order not found')
+  }
+  if (order.returnRequest.status !== 'requested') {
+    res.status(400)
+    throw new Error('No pending return request on this order')
+  }
+
+  order.returnRequest.status = approve ? 'approved' : 'rejected'
+  order.returnRequest.resolvedAt = new Date()
+  await order.save()
+
+  sendPushToUser(order.user, {
+    title: `Order #${order.orderNumber}`,
+    body: approve
+      ? 'Your return request was approved — refund will be processed shortly.'
+      : 'Your return request was reviewed and could not be approved.',
+    url: '/orders',
+  })
+
+  res.json(order)
+})
+
 // @route  GET /api/orders/:id
 // @access Private (owner or admin)
 export const getOrderById = asyncHandler(async (req, res) => {

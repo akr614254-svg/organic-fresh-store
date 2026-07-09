@@ -103,6 +103,29 @@ export default function Checkout() {
           {/* Contact + address */}
           <div>
             <h2 className="font-medium text-forest mb-4">Delivery details</h2>
+
+            {user?.addresses?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {user.addresses.map((a, i) => (
+                  <button
+                    type="button"
+                    key={i}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, phone: a.phone, address: a.line, lat: a.lat ?? null, lng: a.lng ?? null }))
+                    }
+                    className={`px-4 py-2 rounded-xl text-xs font-medium border text-left transition-colors ${
+                      form.address === a.line
+                        ? 'bg-forest text-cream border-forest'
+                        : 'bg-white border-forest/15 text-charcoal/70 hover:border-leaf'
+                    }`}
+                  >
+                    <span className="font-semibold">{a.label}</span> · {a.line.slice(0, 28)}
+                    {a.line.length > 28 ? '…' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-4">
               <input
                 required

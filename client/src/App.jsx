@@ -15,6 +15,7 @@ import OrderConfirmation from './pages/OrderConfirmation'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Orders from './pages/Orders'
+import Account from './pages/Account'
 import About from './pages/About'
 import Contact from './pages/Contact'
 import Dashboard from './pages/admin/Dashboard'
@@ -45,6 +46,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Orders />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/account"
+                  element={
+                    <ProtectedRoute>
+                      <Account />
                     </ProtectedRoute>
                   }
                 />

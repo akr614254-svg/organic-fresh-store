@@ -10,11 +10,15 @@ const SORTS = [
   { id: 'rating', label: 'Top Rated' },
 ]
 
+const PRICE_CEILING = Math.max(...vegetables.map((v) => v.price))
+
 export default function Products() {
   const [params, setParams] = useSearchParams()
   const activeCategory = params.get('category') || 'all'
   const [query, setQuery] = useState(params.get('q') || '')
   const [sort, setSort] = useState('popular')
+  const [maxPrice, setMaxPrice] = useState(PRICE_CEILING)
+  const [minRating, setMinRating] = useState(0)
 
   const setCategory = (id) => {
     const next = new URLSearchParams(params)
@@ -33,6 +37,8 @@ export default function Products() {
       list = list.filter((v) => v.name.toLowerCase().includes(q))
     }
 
+    list = list.filter((v) => v.price <= maxPrice && v.rating >= minRating)
+
     switch (sort) {
       case 'price-asc':
         list = [...list].sort((a, b) => a.price - b.price)
@@ -48,7 +54,7 @@ export default function Products() {
     }
 
     return list
-  }, [activeCategory, query, sort])
+  }, [activeCategory, query, sort, maxPrice, minRating])
 
   return (
     <section className="max-w-7xl mx-auto px-5 md:px-8 py-10">
@@ -111,6 +117,51 @@ export default function Products() {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-6 mb-6 bg-white border border-forest/10 rounded-2xl px-5 py-4">
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-charcoal/60 whitespace-nowrap">
+            Max price: <span className="font-medium text-forest">₹{maxPrice}</span>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={PRICE_CEILING}
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(Number(e.target.value))}
+            className="w-40 accent-leaf"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-charcoal/60">Min rating:</span>
+          {[0, 3, 4, 4.5].map((r) => (
+            <button
+              key={r}
+              onClick={() => setMinRating(r)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                minRating === r
+                  ? 'bg-forest text-cream'
+                  : 'bg-cream border border-forest/10 text-charcoal/60 hover:border-leaf'
+              }`}
+            >
+              {r === 0 ? 'Any' : `★ ${r}+`}
+            </button>
+          ))}
+        </div>
+
+        {(maxPrice !== PRICE_CEILING || minRating !== 0) && (
+          <button
+            onClick={() => {
+              setMaxPrice(PRICE_CEILING)
+              setMinRating(0)
+            }}
+            className="text-xs text-charcoal/40 hover:text-leaf underline underline-offset-2 ml-auto"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       <p className="text-sm text-charcoal/50 mb-4">{results.length} items</p>

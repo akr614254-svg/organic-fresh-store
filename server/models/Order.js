@@ -44,6 +44,17 @@ const orderSchema = new mongoose.Schema(
       enum: ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled'],
       default: 'placed',
     },
+
+    // Self-service return/refund request, raised by the customer after
+    // delivery and resolved by an admin. Actual money movement (e.g.
+    // issuing a Razorpay refund) is a manual step for the admin to do in
+    // the Razorpay dashboard — this just tracks the request/approval state.
+    returnRequest: {
+      status: { type: String, enum: ['none', 'requested', 'approved', 'rejected'], default: 'none' },
+      reason: { type: String, default: '' },
+      requestedAt: { type: Date },
+      resolvedAt: { type: Date },
+    },
   },
   { timestamps: true }
 )

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchMyOrders } from '../services/orderService'
+import { fetchMyOrders, cancelOrder, requestReturn } from '../services/orderService'
 import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentService'
 import { isPushSupported, isPushSubscribedLocally, subscribeToPush } from '../utils/push'
 
@@ -21,6 +21,9 @@ export default function Orders() {
   const [pushSubscribed, setPushSubscribed] = useState(isPushSubscribedLocally())
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState('')
+  const [actionId, setActionId] = useState(null)
+  const [returnFormId, setReturnFormId] = useState(null)
+  const [returnReason, setReturnReason] = useState('')
 
   useEffect(() => {
     fetchMyOrders()
@@ -28,6 +31,35 @@ export default function Orders() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
+
+  const handleCancel = async (order) => {
+    if (!window.confirm(`Cancel order #${order.orderNumber}?`)) return
+    setActionId(order._id)
+    setError(null)
+    try {
+      const updated = await cancelOrder(order._id)
+      setOrders((prev) => prev.map((o) => (o._id === updated._id ? updated : o)))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const handleRequestReturn = async (order) => {
+    setActionId(order._id)
+    setError(null)
+    try {
+      const updated = await requestReturn(order._id, returnReason)
+      setOrders((prev) => prev.map((o) => (o._id === updated._id ? updated : o)))
+      setReturnFormId(null)
+      setReturnReason('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActionId(null)
+    }
+  }
 
   const enablePush = async () => {
     setPushBusy(true)
@@ -124,6 +156,19 @@ export default function Orders() {
                 <span className="text-xs font-medium px-3 py-1 rounded-full bg-sprout/30 text-forest">
                   {STATUS_LABEL[order.status] || order.status}
                 </span>
+                {order.returnRequest?.status && order.returnRequest.status !== 'none' && (
+                  <span
+                    className={`text-xs font-medium px-3 py-1 rounded-full ${
+                      order.returnRequest.status === 'requested'
+                        ? 'bg-turmeric/15 text-turmeric'
+                        : order.returnRequest.status === 'approved'
+                          ? 'bg-sprout/40 text-forest'
+                          : 'bg-red-50 text-red-500'
+                    }`}
+                  >
+                    Return {order.returnRequest.status}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-1 mb-3">
@@ -153,8 +198,52 @@ export default function Orders() {
                     {payingId === order._id ? 'Opening…' : 'Pay Now'}
                   </button>
                 )}
+                {['placed', 'confirmed'].includes(order.status) && (
+                  <button
+                    onClick={() => handleCancel(order)}
+                    disabled={actionId === order._id}
+                    className="text-xs font-medium text-red-500 hover:underline disabled:opacity-50"
+                  >
+                    Cancel order
+                  </button>
+                )}
+                {order.status === 'delivered' && (order.returnRequest?.status ?? 'none') === 'none' && (
+                  <button
+                    onClick={() => setReturnFormId(returnFormId === order._id ? null : order._id)}
+                    className="text-xs font-medium text-charcoal/50 hover:text-forest hover:underline"
+                  >
+                    Request return
+                  </button>
+                )}
               </div>
             </div>
+
+            {returnFormId === order._id && (
+              <div className="mt-3 pt-3 border-t border-forest/10 flex flex-col gap-2">
+                <textarea
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="What went wrong? (e.g. item damaged, wrong item delivered)"
+                  rows={2}
+                  className="bg-cream/50 border border-forest/15 rounded-xl px-3 py-2 text-sm outline-none focus-visible:border-leaf resize-none"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleRequestReturn(order)}
+                    disabled={actionId === order._id || !returnReason.trim()}
+                    className="bg-forest text-cream text-xs font-medium px-4 py-2 rounded-full hover:bg-leaf transition-colors disabled:opacity-50"
+                  >
+                    {actionId === order._id ? 'Submitting…' : 'Submit return request'}
+                  </button>
+                  <button
+                    onClick={() => setReturnFormId(null)}
+                    className="text-xs text-charcoal/40 hover:text-charcoal"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

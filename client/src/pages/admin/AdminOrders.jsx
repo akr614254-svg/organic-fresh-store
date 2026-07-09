@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchAllOrders, updateOrderStatus, updateOrderPaymentStatus } from '../../services/adminService'
+import { fetchAllOrders, updateOrderStatus, updateOrderPaymentStatus, resolveReturn } from '../../services/adminService'
 import { useAdminOrdersSocket } from '../../context/AdminOrdersSocketContext'
 
 const STATUSES = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled']
@@ -50,6 +50,18 @@ export default function AdminOrders() {
     }
   }
 
+  const handleResolveReturn = async (order, approve) => {
+    setUpdatingId(order._id)
+    try {
+      const updated = await resolveReturn(order._id, approve)
+      setOrders((prev) => prev.map((o) => (o._id === order._id ? updated : o)))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
   return (
     <div>
       <h1 className="font-display text-2xl text-forest font-semibold mb-6">Orders</h1>
@@ -67,6 +79,7 @@ export default function AdminOrders() {
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Order Status</th>
+              <th className="px-4 py-3">Return/Refund</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-forest/5">
@@ -140,6 +153,40 @@ export default function AdminOrders() {
                       <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                     ))}
                   </select>
+                </td>
+                <td className="px-4 py-3">
+                  {(!o.returnRequest || o.returnRequest.status === 'none') && (
+                    <span className="text-xs text-charcoal/30">—</span>
+                  )}
+                  {o.returnRequest?.status === 'requested' && (
+                    <div className="max-w-[12rem]">
+                      <p className="text-xs text-charcoal/70 mb-1.5" title={o.returnRequest.reason}>
+                        {o.returnRequest.reason || 'No reason given'}
+                      </p>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleResolveReturn(o, true)}
+                          disabled={updatingId === o._id}
+                          className="text-[11px] bg-sprout/40 text-forest px-2 py-1 rounded-full hover:bg-sprout/60 disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleResolveReturn(o, false)}
+                          disabled={updatingId === o._id}
+                          className="text-[11px] bg-red-50 text-red-500 px-2 py-1 rounded-full hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {o.returnRequest?.status === 'approved' && (
+                    <span className="text-xs text-forest bg-sprout/40 px-2 py-1 rounded-full">Approved</span>
+                  )}
+                  {o.returnRequest?.status === 'rejected' && (
+                    <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-full">Rejected</span>
+                  )}
                 </td>
               </tr>
             ))}

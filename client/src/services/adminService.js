@@ -42,6 +42,11 @@ export async function updateOrderPaymentStatus(id, paymentStatus) {
   return data
 }
 
+export async function resolveReturn(id, approve) {
+  const { data } = await api.put(`/orders/${id}/return/resolve`, { approve })
+  return data
+}
+
 export async function fetchUsers() {
   const { data } = await api.get('/admin/users')
   return data

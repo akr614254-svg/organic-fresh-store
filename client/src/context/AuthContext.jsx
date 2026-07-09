@@ -70,6 +70,14 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // Used after profile/address updates that don't go through login/register
+  // (e.g. saving a new address on the Account page) — keeps context state
+  // and the cached copy in localStorage consistent with each other.
+  const updateUser = (freshUser) => {
+    localStorage.setItem(USER_KEY, JSON.stringify(freshUser))
+    setUser(freshUser)
+  }
+
   const value = {
     user,
     isAuthenticated: !!user,
@@ -78,6 +86,7 @@ export function AuthProvider({ children }) {
     register,
     login,
     logout,
+    updateUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

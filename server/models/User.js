@@ -6,6 +6,8 @@ const addressSchema = new mongoose.Schema(
     label: { type: String, default: 'Home' },
     line: { type: String, required: true },
     phone: { type: String, required: true },
+    lat: { type: Number },
+    lng: { type: Number },
   },
   { _id: false }
 )
