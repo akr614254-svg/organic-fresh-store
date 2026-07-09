@@ -3,6 +3,7 @@ import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import { emitNewOrder } from '../utils/socket.js'
 import { notifyAdminsOfNewOrder } from '../utils/notify.js'
+import { sendPushToUser } from '../utils/webpush.js'
 
 function generateOrderNumber() {
   return `OFS${Math.floor(100000 + Math.random() * 900000)}`
@@ -117,6 +118,14 @@ export const getAllOrders = asyncHandler(async (req, res) => {
 // @access Private/Admin
 const VALID_STATUSES = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled']
 
+const STATUS_MESSAGE = {
+  confirmed: 'has been confirmed',
+  packed: 'has been packed and will be out for delivery soon',
+  out_for_delivery: 'is out for delivery',
+  delivered: 'has been delivered — enjoy!',
+  cancelled: 'has been cancelled',
+}
+
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status } = req.body
   if (!VALID_STATUSES.includes(status)) {
@@ -132,6 +141,18 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
 
   order.status = status
   await order.save()
+
+  // Best-effort push notification straight to the customer's device — see
+  // utils/webpush.js. Silently skipped if they never enabled notifications
+  // or VAPID isn't configured; never blocks this response either way.
+  if (STATUS_MESSAGE[status]) {
+    sendPushToUser(order.user, {
+      title: `Order #${order.orderNumber}`,
+      body: `Your order ${STATUS_MESSAGE[status]}.`,
+      url: '/orders',
+    })
+  }
+
   res.json(order)
 })
 

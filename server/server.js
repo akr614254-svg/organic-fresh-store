@@ -13,6 +13,7 @@ import authRoutes from './routes/authRoutes.js'
 import productRoutes from './routes/productRoutes.js'
 import orderRoutes from './routes/orderRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
+import pushRoutes from './routes/pushRoutes.js'
 
 await connectDB()
 
@@ -32,6 +33,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/push', pushRoutes)
 
 app.use(notFound)
 app.use(errorHandler)

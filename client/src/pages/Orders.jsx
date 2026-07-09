@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchMyOrders } from '../services/orderService'
 import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentService'
+import { isPushSupported, isPushSubscribedLocally, subscribeToPush } from '../utils/push'
 
 const STATUS_LABEL = {
   placed: 'Placed',
@@ -17,6 +18,9 @@ export default function Orders() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [payingId, setPayingId] = useState(null)
+  const [pushSubscribed, setPushSubscribed] = useState(isPushSubscribedLocally())
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushError, setPushError] = useState('')
 
   useEffect(() => {
     fetchMyOrders()
@@ -24,6 +28,19 @@ export default function Orders() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
+
+  const enablePush = async () => {
+    setPushBusy(true)
+    setPushError('')
+    try {
+      await subscribeToPush()
+      setPushSubscribed(true)
+    } catch (err) {
+      setPushError(err.message)
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   const retryPayment = async (order) => {
     setPayingId(order._id)
@@ -46,6 +63,31 @@ export default function Orders() {
   return (
     <section className="max-w-3xl mx-auto px-5 md:px-8 py-10">
       <h1 className="font-display text-3xl text-forest font-semibold mb-8">Your orders</h1>
+
+      {isPushSupported() && !pushSubscribed && (
+        <div className="bg-sprout/15 border border-sprout/40 rounded-2xl px-5 py-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔔</span>
+            <div>
+              <p className="text-sm font-medium text-forest">Get notified on this device</p>
+              <p className="text-xs text-charcoal/50">We'll ping you when your order status changes — no need to keep checking.</p>
+            </div>
+          </div>
+          <button
+            onClick={enablePush}
+            disabled={pushBusy}
+            className="bg-forest text-cream text-xs font-medium px-4 py-2 rounded-full hover:bg-leaf transition-colors disabled:opacity-50 shrink-0"
+          >
+            {pushBusy ? 'Enabling…' : 'Enable notifications'}
+          </button>
+        </div>
+      )}
+      {pushError && <p className="text-xs text-red-500 mb-4">{pushError}</p>}
+      {pushSubscribed && (
+        <p className="text-xs text-leaf mb-6 flex items-center gap-1.5">
+          <span>✅</span> Notifications enabled on this device
+        </p>
+      )}
 
       {loading && <p className="text-sm text-charcoal/50">Loading your orders…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
