@@ -97,8 +97,8 @@ export default function AdminOrders() {
 
       {error && <div className="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">{error}</div>}
 
-      <div className="bg-white border border-forest/10 rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-forest/10 rounded-2xl overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-sprout/20 text-left text-xs uppercase tracking-wide text-charcoal/50">
             <tr>
               <th className="px-4 py-3">Order</th>
