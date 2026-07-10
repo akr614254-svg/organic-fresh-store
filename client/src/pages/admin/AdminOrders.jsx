@@ -155,7 +155,14 @@ export default function AdminOrders() {
                     ))}
                   </ul>
                 </td>
-                <td className="px-4 py-3 font-mono">₹{o.total}</td>
+                <td className="px-4 py-3 font-mono">
+                  ₹{o.total}
+                  {o.walletAmountUsed > 0 && (
+                    <div className="text-[10px] text-forest font-sans whitespace-nowrap">
+                      💰 ₹{o.walletAmountUsed} paid via wallet
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <div className="text-xs text-charcoal/60 capitalize mb-1">{o.paymentMethod}</div>
                   <select
