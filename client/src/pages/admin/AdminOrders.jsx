@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchAllOrders, updateOrderStatus, updateOrderPaymentStatus, resolveReturn } from '../../services/adminService'
+import { fetchAllOrders, updateOrderStatus, updateOrderPaymentStatus, resolveReturn, processRefundsNow } from '../../services/adminService'
 import { useAdminOrdersSocket } from '../../context/AdminOrdersSocketContext'
 
 const STATUSES = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled']
@@ -9,6 +9,9 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState(null)
   const [error, setError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
+  const [scheduleDates, setScheduleDates] = useState({}) // orderId -> yyyy-mm-dd
+  const [processingRefunds, setProcessingRefunds] = useState(false)
+  const [refundNotice, setRefundNotice] = useState('')
   const { newOrderCount, clearNewOrderCount } = useAdminOrdersSocket()
 
   useEffect(() => {
@@ -50,10 +53,10 @@ export default function AdminOrders() {
     }
   }
 
-  const handleResolveReturn = async (order, approve) => {
+  const handleResolveReturn = async (order, approve, scheduledFor) => {
     setUpdatingId(order._id)
     try {
-      const updated = await resolveReturn(order._id, approve)
+      const updated = await resolveReturn(order._id, approve, scheduledFor || undefined)
       setOrders((prev) => prev.map((o) => (o._id === order._id ? updated : o)))
     } catch (err) {
       setError(err.message)
@@ -62,9 +65,35 @@ export default function AdminOrders() {
     }
   }
 
+  const handleProcessRefundsNow = async () => {
+    setProcessingRefunds(true)
+    setRefundNotice('')
+    try {
+      const { processed } = await processRefundsNow()
+      setRefundNotice(processed === 0 ? 'No refunds were due.' : `Processed ${processed} due refund${processed > 1 ? 's' : ''}.`)
+      fetchAllOrders().then(setOrders).catch((err) => setError(err.message))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setProcessingRefunds(false)
+    }
+  }
+
   return (
     <div>
-      <h1 className="font-display text-2xl text-forest font-semibold mb-6">Orders</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="font-display text-2xl text-forest font-semibold">Orders</h1>
+        <div className="flex items-center gap-3">
+          {refundNotice && <span className="text-xs text-charcoal/50">{refundNotice}</span>}
+          <button
+            onClick={handleProcessRefundsNow}
+            disabled={processingRefunds}
+            className="text-xs font-medium bg-white border border-forest/15 text-charcoal/70 px-3 py-2 rounded-full hover:border-leaf disabled:opacity-50"
+          >
+            {processingRefunds ? 'Checking…' : '↻ Process due scheduled refunds'}
+          </button>
+        </div>
+      </div>
 
       {error && <div className="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">{error}</div>}
 
@@ -75,6 +104,7 @@ export default function AdminOrders() {
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Deliver to</th>
+              <th className="px-4 py-3">Delivery</th>
               <th className="px-4 py-3">Items</th>
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Payment</th>
@@ -109,6 +139,12 @@ export default function AdminOrders() {
                       View on map
                     </a>
                   )}
+                </td>
+                <td className="px-4 py-3 text-xs text-charcoal/60 whitespace-nowrap">
+                  {o.deliveryDate
+                    ? new Date(o.deliveryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                    : '—'}
+                  <div className="text-charcoal/40">{o.deliverySlot}</div>
                 </td>
                 <td className="px-4 py-3">
                   <ul className="space-y-0.5">
@@ -159,17 +195,29 @@ export default function AdminOrders() {
                     <span className="text-xs text-charcoal/30">—</span>
                   )}
                   {o.returnRequest?.status === 'requested' && (
-                    <div className="max-w-[12rem]">
+                    <div className="max-w-[14rem]">
                       <p className="text-xs text-charcoal/70 mb-1.5" title={o.returnRequest.reason}>
                         {o.returnRequest.reason || 'No reason given'}
                       </p>
+                      {o.paymentMethod === 'razorpay' && o.paymentStatus === 'paid' && (
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <input
+                            type="date"
+                            min={new Date().toISOString().slice(0, 10)}
+                            value={scheduleDates[o._id] || ''}
+                            onChange={(e) => setScheduleDates((prev) => ({ ...prev, [o._id]: e.target.value }))}
+                            className="text-[11px] border border-forest/15 rounded-lg px-1.5 py-1 outline-none w-full"
+                            title="Optional: schedule the refund for a later date instead of issuing it immediately"
+                          />
+                        </div>
+                      )}
                       <div className="flex gap-1.5">
                         <button
-                          onClick={() => handleResolveReturn(o, true)}
+                          onClick={() => handleResolveReturn(o, true, scheduleDates[o._id])}
                           disabled={updatingId === o._id}
                           className="text-[11px] bg-sprout/40 text-forest px-2 py-1 rounded-full hover:bg-sprout/60 disabled:opacity-50"
                         >
-                          Approve
+                          {scheduleDates[o._id] ? 'Approve & schedule' : 'Approve'}
                         </button>
                         <button
                           onClick={() => handleResolveReturn(o, false)}
@@ -182,7 +230,27 @@ export default function AdminOrders() {
                     </div>
                   )}
                   {o.returnRequest?.status === 'approved' && (
-                    <span className="text-xs text-forest bg-sprout/40 px-2 py-1 rounded-full">Approved</span>
+                    <div className="max-w-[12rem]">
+                      <span className="text-xs text-forest bg-sprout/40 px-2 py-1 rounded-full inline-block mb-1">Approved</span>
+                      {o.returnRequest.refund?.status === 'scheduled' && (
+                        <p className="text-[11px] text-charcoal/50">
+                          💤 Refund ₹{o.returnRequest.refund.amount} on{' '}
+                          {new Date(o.returnRequest.refund.scheduledFor).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </p>
+                      )}
+                      {o.returnRequest.refund?.status === 'processing' && (
+                        <p className="text-[11px] text-charcoal/50">⏳ Refund processing…</p>
+                      )}
+                      {o.returnRequest.refund?.status === 'completed' && (
+                        <p className="text-[11px] text-charcoal/50">✅ Refunded ₹{o.returnRequest.refund.amount}</p>
+                      )}
+                      {o.returnRequest.refund?.status === 'failed' && (
+                        <p className="text-[11px] text-red-500" title={o.returnRequest.refund.failureReason}>⚠️ Refund failed</p>
+                      )}
+                      {(!o.returnRequest.refund || o.returnRequest.refund.status === 'none') && (
+                        <p className="text-[11px] text-charcoal/40">Manual refund needed (COD)</p>
+                      )}
+                    </div>
                   )}
                   {o.returnRequest?.status === 'rejected' && (
                     <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-full">Rejected</span>

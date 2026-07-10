@@ -42,8 +42,13 @@ export async function updateOrderPaymentStatus(id, paymentStatus) {
   return data
 }
 
-export async function resolveReturn(id, approve) {
-  const { data } = await api.put(`/orders/${id}/return/resolve`, { approve })
+export async function resolveReturn(id, approve, scheduledFor) {
+  const { data } = await api.put(`/orders/${id}/return/resolve`, { approve, scheduledFor })
+  return data
+}
+
+export async function processRefundsNow() {
+  const { data } = await api.post('/admin/refunds/process')
   return data
 }
 

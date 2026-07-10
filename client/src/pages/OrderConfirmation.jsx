@@ -31,6 +31,14 @@ export default function OrderConfirmation() {
 
       <div className="bg-white border border-forest/10 rounded-3xl p-6 text-left mb-8">
         <div className="flex justify-between text-sm text-charcoal/60 mb-3">
+          <span>Delivery date</span>
+          <span className="font-medium text-charcoal">
+            {order.deliveryDate
+              ? new Date(order.deliveryDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+              : '—'}
+          </span>
+        </div>
+        <div className="flex justify-between text-sm text-charcoal/60 mb-3">
           <span>Delivery slot</span>
           <span className="font-medium text-charcoal">{order.slot}</span>
         </div>

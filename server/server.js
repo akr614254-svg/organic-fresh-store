@@ -16,6 +16,7 @@ import adminRoutes from './routes/adminRoutes.js'
 import pushRoutes from './routes/pushRoutes.js'
 import reviewRoutes from './routes/reviewRoutes.js'
 import couponRoutes from './routes/couponRoutes.js'
+import { processDueScheduledRefunds } from './utils/refunds.js'
 
 await connectDB()
 
@@ -44,6 +45,16 @@ app.use(errorHandler)
 
 const httpServer = http.createServer(app)
 initSocket(httpServer, allowedOrigins)
+
+// Best-effort background check for due scheduled refunds. This only fires
+// while the server is actually awake — on Render's free tier the service
+// sleeps after 15 minutes idle, so this isn't a guaranteed-on-time cron.
+// The admin "process refunds now" button (POST /api/admin/refunds/process)
+// is the reliable fallback for exact timing.
+const REFUND_CHECK_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
+setInterval(() => {
+  processDueScheduledRefunds().catch((err) => console.error('[refund] Background check failed:', err.message))
+}, REFUND_CHECK_INTERVAL_MS)
 
 const PORT = process.env.PORT || 5000
 httpServer.listen(PORT, () => console.log(`Organic Fresh API running on port ${PORT}`))

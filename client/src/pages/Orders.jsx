@@ -15,6 +15,13 @@ const STATUS_LABEL = {
   cancelled: 'Cancelled',
 }
 
+const RETURN_WINDOW_MS = 24 * 60 * 60 * 1000
+
+function isWithinReturnWindow(deliveredAt) {
+  if (!deliveredAt) return false
+  return Date.now() - new Date(deliveredAt).getTime() <= RETURN_WINDOW_MS
+}
+
 export default function Orders() {
   const { addToCart, openDrawer } = useCart()
   const [orders, setOrders] = useState([])
@@ -208,6 +215,34 @@ export default function Orders() {
               <OrderStepper status={order.status} />
             </div>
 
+            <div className="text-xs text-charcoal/50 mb-3">
+              Delivery: {order.deliveryDate
+                ? new Date(order.deliveryDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+                : '—'}
+              {' · '}{order.deliverySlot}
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              {order.returnRequest?.refund?.status && order.returnRequest.refund.status !== 'none' && (
+                <div className="text-xs bg-cream/80 border border-forest/10 rounded-xl px-3 py-2 text-charcoal/60">
+                  {order.returnRequest.refund.status === 'scheduled' && (
+                    <>💤 Refund of ₹{order.returnRequest.refund.amount} scheduled for{' '}
+                      {new Date(order.returnRequest.refund.scheduledFor).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </>
+                  )}
+                  {order.returnRequest.refund.status === 'processing' && '⏳ Refund is being processed…'}
+                  {order.returnRequest.refund.status === 'completed' && (
+                    <>✅ ₹{order.returnRequest.refund.amount} refunded on{' '}
+                      {new Date(order.returnRequest.refund.processedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </>
+                  )}
+                  {order.returnRequest.refund.status === 'failed' && (
+                    <span className="text-red-500">⚠️ Refund issue — {order.returnRequest.refund.failureReason || 'please contact support'}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-col gap-1 mb-3">
               {order.items.map((item, i) => (
                 <div key={i} className="flex justify-between text-sm text-charcoal/70">
@@ -282,12 +317,16 @@ export default function Orders() {
                   </button>
                 )}
                 {order.status === 'delivered' && (order.returnRequest?.status ?? 'none') === 'none' && (
-                  <button
-                    onClick={() => setReturnFormId(returnFormId === order._id ? null : order._id)}
-                    className="text-xs font-medium text-charcoal/50 hover:text-forest hover:underline"
-                  >
-                    Request return
-                  </button>
+                  isWithinReturnWindow(order.deliveredAt) ? (
+                    <button
+                      onClick={() => setReturnFormId(returnFormId === order._id ? null : order._id)}
+                      className="text-xs font-medium text-charcoal/50 hover:text-forest hover:underline"
+                    >
+                      Request return
+                    </button>
+                  ) : (
+                    <span className="text-xs text-charcoal/30">Return window closed (1 day)</span>
+                  )
                 )}
               </div>
             </div>

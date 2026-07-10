@@ -2,6 +2,7 @@ import asyncHandler from 'express-async-handler'
 import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import User from '../models/User.js'
+import { processDueScheduledRefunds } from '../utils/refunds.js'
 
 // @route  GET /api/admin/stats
 // @access Private/Admin
@@ -70,4 +71,15 @@ export const updateUserRole = asyncHandler(async (req, res) => {
   user.role = role
   await user.save()
   res.json({ user: user.toSafeObject() })
+})
+
+// @route  POST /api/admin/refunds/process
+// @access Private/Admin
+// Manually kicks off any scheduled refunds whose date has passed. There's
+// also a background timer doing this automatically (see server.js), but
+// Render's free tier sleeps the server after inactivity, so a manual
+// "process now" button is a reliable fallback rather than a nice-to-have.
+export const processRefundsNow = asyncHandler(async (req, res) => {
+  const processed = await processDueScheduledRefunds()
+  res.json({ processed: processed.length, orders: processed })
 })

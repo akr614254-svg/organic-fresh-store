@@ -33,6 +33,9 @@ const orderSchema = new mongoose.Schema(
       lng: { type: Number },
     },
     deliverySlot: { type: String, required: true },
+    // Customer-chosen delivery date (not just a same-day time slot).
+    // Defaults to "today" server-side if the client ever omits it.
+    deliveryDate: { type: Date, required: true },
 
     subtotal: { type: Number, required: true },
     coupon: {
@@ -47,7 +50,7 @@ const orderSchema = new mongoose.Schema(
     total: { type: Number, required: true },
 
     paymentMethod: { type: String, enum: ['razorpay', 'cod'], default: 'cod' },
-    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
     razorpayOrderId: { type: String },
     razorpayPaymentId: { type: String },
 
@@ -56,16 +59,31 @@ const orderSchema = new mongoose.Schema(
       enum: ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled'],
       default: 'placed',
     },
+    // Set automatically the moment status first becomes 'delivered' — this
+    // is what the 1-day return window is measured from, not createdAt.
+    deliveredAt: { type: Date },
 
-    // Self-service return/refund request, raised by the customer after
-    // delivery and resolved by an admin. Actual money movement (e.g.
-    // issuing a Razorpay refund) is a manual step for the admin to do in
-    // the Razorpay dashboard — this just tracks the request/approval state.
+    // Self-service return/refund request, raised by the customer within 24
+    // hours of delivery and resolved by an admin. Approving a return on a
+    // paid Razorpay order can trigger an automatic refund (immediate or
+    // scheduled for a later date) — see server/utils/refunds.js.
     returnRequest: {
       status: { type: String, enum: ['none', 'requested', 'approved', 'rejected'], default: 'none' },
       reason: { type: String, default: '' },
       requestedAt: { type: Date },
       resolvedAt: { type: Date },
+      refund: {
+        status: {
+          type: String,
+          enum: ['none', 'scheduled', 'processing', 'completed', 'failed'],
+          default: 'none',
+        },
+        amount: { type: Number },
+        scheduledFor: { type: Date },
+        razorpayRefundId: { type: String },
+        processedAt: { type: Date },
+        failureReason: { type: String },
+      },
     },
   },
   { timestamps: true }

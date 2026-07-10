@@ -23,6 +23,7 @@ import AdminProducts from './pages/admin/AdminProducts'
 import AdminOrders from './pages/admin/AdminOrders'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminCoupons from './pages/admin/AdminCoupons'
+import InstallPrompt from './components/InstallPrompt'
 
 function App() {
   return (
@@ -76,6 +77,7 @@ function App() {
               </Route>
             </Routes>
           </BrowserRouter>
+          <InstallPrompt />
         </WishlistProvider>
       </CartProvider>
     </AuthProvider>

@@ -6,6 +6,7 @@ import { notifyAdminsOfNewOrder } from '../utils/notify.js'
 import { sendPushToUser } from '../utils/webpush.js'
 import { validateCouponForOrder } from '../utils/coupons.js'
 import { streamInvoicePdf } from '../utils/generateInvoicePdf.js'
+import { issueRefund, isAutoRefundable } from '../utils/refunds.js'
 
 const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST = 5% total, split evenly
 
@@ -19,7 +20,7 @@ function generateOrderNumber() {
 // For now, COD orders are marked pending and Razorpay orders are marked paid
 // once the client confirms a successful checkout.
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryAddress, deliverySlot, paymentMethod, couponCode } = req.body
+  const { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode } = req.body
 
   if (!items || items.length === 0) {
     res.status(400)
@@ -28,6 +29,16 @@ export const createOrder = asyncHandler(async (req, res) => {
   if (!deliveryAddress?.name || !deliveryAddress?.phone || !deliveryAddress?.address) {
     res.status(400)
     throw new Error('Delivery name, phone, and address are required')
+  }
+
+  // Delivery date — default to today if the client somehow omits it, but
+  // never allow a date in the past (clock skew aside, checked to the day).
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const chosenDate = deliveryDate ? new Date(deliveryDate) : today
+  if (Number.isNaN(chosenDate.getTime()) || chosenDate < today) {
+    res.status(400)
+    throw new Error('Please choose a valid delivery date (today or later)')
   }
 
   // Re-price server-side from the database rather than trusting client totals.
@@ -88,6 +99,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       lng: typeof deliveryAddress.lng === 'number' ? deliveryAddress.lng : undefined,
     },
     deliverySlot,
+    deliveryDate: chosenDate,
     subtotal,
     coupon: appliedCoupon ? { code: appliedCoupon.code, discountAmount } : undefined,
     cgst,
@@ -149,6 +161,8 @@ export const cancelOrder = asyncHandler(async (req, res) => {
 
 // @route  PUT /api/orders/:id/return
 // @access Private (owner only) — request a return/refund after delivery
+const RETURN_WINDOW_MS = 24 * 60 * 60 * 1000 // 1 day
+
 export const requestReturn = asyncHandler(async (req, res) => {
   const { reason } = req.body
   const order = await Order.findById(req.params.id)
@@ -167,6 +181,10 @@ export const requestReturn = asyncHandler(async (req, res) => {
   if (order.returnRequest.status === 'requested') {
     res.status(400)
     throw new Error('A return request is already pending for this order')
+  }
+  if (!order.deliveredAt || Date.now() - order.deliveredAt.getTime() > RETURN_WINDOW_MS) {
+    res.status(400)
+    throw new Error('Returns can only be requested within 1 day of delivery')
   }
 
   order.returnRequest = { status: 'requested', reason: reason || '', requestedAt: new Date() }
@@ -187,8 +205,11 @@ export const requestReturn = asyncHandler(async (req, res) => {
 
 // @route  PUT /api/orders/:id/return/resolve
 // @access Private/Admin
+// approve: true/false. When approving, optionally pass scheduledFor (an
+// ISO date/time) to schedule the refund for later instead of issuing it
+// immediately — e.g. to line up with a specific accounting date.
 export const resolveReturn = asyncHandler(async (req, res) => {
-  const { approve } = req.body
+  const { approve, scheduledFor } = req.body
   const order = await Order.findById(req.params.id)
   if (!order) {
     res.status(404)
@@ -201,17 +222,41 @@ export const resolveReturn = asyncHandler(async (req, res) => {
 
   order.returnRequest.status = approve ? 'approved' : 'rejected'
   order.returnRequest.resolvedAt = new Date()
-  await order.save()
 
-  sendPushToUser(order.user, {
-    title: `Order #${order.orderNumber}`,
-    body: approve
-      ? 'Your return request was approved — refund will be processed shortly.'
-      : 'Your return request was reviewed and could not be approved.',
-    url: '/orders',
-  })
+  if (approve && isAutoRefundable(order)) {
+    if (scheduledFor) {
+      const when = new Date(scheduledFor)
+      if (Number.isNaN(when.getTime()) || when < new Date()) {
+        res.status(400)
+        throw new Error('Scheduled refund date must be a valid date in the future')
+      }
+      order.returnRequest.refund = { status: 'scheduled', amount: order.total, scheduledFor: when }
+      await order.save()
+      sendPushToUser(order.user, {
+        title: `Order #${order.orderNumber}`,
+        body: `Your return was approved — a refund of ₹${order.total} is scheduled for ${when.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.`,
+        url: '/orders',
+      })
+    } else {
+      await order.save()
+      await issueRefund(order) // saves internally, issues the refund right away, and sends its own push on completion
+    }
+  } else {
+    await order.save()
+  }
 
-  res.json(order)
+  if (!approve || !isAutoRefundable(order)) {
+    sendPushToUser(order.user, {
+      title: `Order #${order.orderNumber}`,
+      body: approve
+        ? 'Your return request was approved. Since this order wasn\u2019t paid online, please arrange your refund with the store.'
+        : 'Your return request was reviewed and could not be approved.',
+      url: '/orders',
+    })
+  }
+
+  const fresh = await Order.findById(order._id)
+  res.json(fresh)
 })
 
 // @route  GET /api/orders/:id
@@ -263,6 +308,9 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   }
 
   order.status = status
+  if (status === 'delivered' && !order.deliveredAt) {
+    order.deliveredAt = new Date()
+  }
   await order.save()
 
   // Best-effort push notification straight to the customer's device — see

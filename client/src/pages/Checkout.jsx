@@ -10,6 +10,23 @@ import AddressPicker from '../components/AddressPicker'
 const SLOTS = ['7 – 9 AM', '11 AM – 1 PM', '3 – 5 PM', '6 – 8 PM']
 const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST, matches the server's calculation
 
+function todayISODate() {
+  const d = new Date()
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset()) // local date, not UTC
+  return d.toISOString().slice(0, 10)
+}
+
+function addDaysISO(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 10)
+}
+
+function dateLabel(isoDate) {
+  return new Date(isoDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 export default function Checkout() {
   const { items, subtotal, deliveryFee, clearCart } = useCart()
   const { isAuthenticated, user } = useAuth()
@@ -17,6 +34,7 @@ export default function Checkout() {
 
   const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', address: '', lat: null, lng: null })
   const [slot, setSlot] = useState(SLOTS[1])
+  const [deliveryDate, setDeliveryDate] = useState(todayISODate())
   const [payment, setPayment] = useState('razorpay')
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState(null)
@@ -82,6 +100,7 @@ export default function Checkout() {
         items,
         deliveryAddress: { name: form.name, phone: form.phone, address: form.address, lat: form.lat, lng: form.lng },
         deliverySlot: slot,
+        deliveryDate,
         paymentMethod: payment,
         couponCode: coupon?.code,
       })
@@ -110,6 +129,7 @@ export default function Checkout() {
         deliveryFee: finalOrder.deliveryFee,
         total: finalOrder.total,
         slot: finalOrder.deliverySlot,
+        deliveryDate: finalOrder.deliveryDate,
         name: finalOrder.deliveryAddress.name,
         address: finalOrder.deliveryAddress.address,
         lat: finalOrder.deliveryAddress.lat,
@@ -190,6 +210,39 @@ export default function Checkout() {
               <AddressPicker
                 value={form.address}
                 onChange={({ address, lat, lng }) => setForm((f) => ({ ...f, address, lat, lng }))}
+              />
+            </div>
+          </div>
+
+          {/* Delivery date */}
+          <div>
+            <h2 className="font-medium text-forest mb-4">Delivery date</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { label: 'Today', value: addDaysISO(0) },
+                { label: 'Tomorrow', value: addDaysISO(1) },
+                { label: dateLabel(addDaysISO(2)), value: addDaysISO(2) },
+              ].map((d) => (
+                <button
+                  type="button"
+                  key={d.value}
+                  onClick={() => setDeliveryDate(d.value)}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                    deliveryDate === d.value
+                      ? 'bg-forest text-cream border-forest'
+                      : 'bg-white text-charcoal/70 border-forest/15 hover:border-leaf'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+              <input
+                type="date"
+                value={deliveryDate}
+                min={addDaysISO(0)}
+                max={addDaysISO(6)}
+                onChange={(e) => setDeliveryDate(e.target.value)}
+                className="px-4 py-2.5 rounded-xl text-sm border border-forest/15 bg-white text-charcoal/70 outline-none focus-visible:border-leaf"
               />
             </div>
           </div>
