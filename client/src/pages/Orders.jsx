@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchMyOrders, cancelOrder, requestReturn } from '../services/orderService'
+import { fetchMyOrders, cancelOrder, requestReturn, downloadInvoice } from '../services/orderService'
 import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentService'
 import { isPushSupported, isPushSubscribedLocally, subscribeToPush } from '../utils/push'
+import { useCart } from '../context/CartContext'
+import OrderStepper from '../components/OrderStepper'
 
 const STATUS_LABEL = {
   placed: 'Placed',
@@ -14,6 +16,7 @@ const STATUS_LABEL = {
 }
 
 export default function Orders() {
+  const { addToCart, openDrawer } = useCart()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -24,6 +27,8 @@ export default function Orders() {
   const [actionId, setActionId] = useState(null)
   const [returnFormId, setReturnFormId] = useState(null)
   const [returnReason, setReturnReason] = useState('')
+  const [invoiceId, setInvoiceId] = useState(null)
+  const [buyAgainNotice, setBuyAgainNotice] = useState('')
 
   useEffect(() => {
     fetchMyOrders()
@@ -92,6 +97,35 @@ export default function Orders() {
     }
   }
 
+  const handleDownloadInvoice = async (order) => {
+    setInvoiceId(order._id)
+    try {
+      await downloadInvoice(order._id, order.orderNumber)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setInvoiceId(null)
+    }
+  }
+
+  const handleBuyAgain = (order) => {
+    // Older orders placed before "Buy again" shipped won't have legacyId on
+    // their items — skip those gracefully instead of adding a broken row.
+    const reAddable = order.items.filter((item) => item.legacyId != null)
+    if (reAddable.length === 0) {
+      setBuyAgainNotice('Some items from this order are no longer available to re-add.')
+      setTimeout(() => setBuyAgainNotice(''), 4000)
+      return
+    }
+    reAddable.forEach((item) => {
+      addToCart(
+        { id: item.legacyId, name: item.name, price: item.price, unit: item.unit, emoji: item.emoji },
+        item.qty,
+      )
+    })
+    openDrawer()
+  }
+
   return (
     <section className="max-w-3xl mx-auto px-5 md:px-8 py-10">
       <h1 className="font-display text-3xl text-forest font-semibold mb-8">Your orders</h1>
@@ -120,6 +154,7 @@ export default function Orders() {
           <span>✅</span> Notifications enabled on this device
         </p>
       )}
+      {buyAgainNotice && <p className="text-xs text-turmeric mb-4">{buyAgainNotice}</p>}
 
       {loading && <p className="text-sm text-charcoal/50">Loading your orders…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -137,7 +172,7 @@ export default function Orders() {
       <div className="flex flex-col gap-4">
         {orders.map((order) => (
           <div key={order._id} className="bg-white border border-forest/10 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-4">
               <span className="font-mono text-sm text-charcoal/60">#{order.orderNumber}</span>
               <div className="flex items-center gap-2">
                 {order.paymentMethod === 'razorpay' && (
@@ -153,9 +188,6 @@ export default function Orders() {
                     {order.paymentStatus}
                   </span>
                 )}
-                <span className="text-xs font-medium px-3 py-1 rounded-full bg-sprout/30 text-forest">
-                  {STATUS_LABEL[order.status] || order.status}
-                </span>
                 {order.returnRequest?.status && order.returnRequest.status !== 'none' && (
                   <span
                     className={`text-xs font-medium px-3 py-1 rounded-full ${
@@ -171,6 +203,11 @@ export default function Orders() {
                 )}
               </div>
             </div>
+
+            <div className="mb-4 overflow-x-auto">
+              <OrderStepper status={order.status} />
+            </div>
+
             <div className="flex flex-col gap-1 mb-3">
               {order.items.map((item, i) => (
                 <div key={i} className="flex justify-between text-sm text-charcoal/70">
@@ -179,7 +216,31 @@ export default function Orders() {
                 </div>
               ))}
             </div>
-            <div className="border-t border-forest/10 pt-3 flex items-center justify-between text-sm">
+
+            <div className="border-t border-forest/10 pt-3 flex flex-col gap-1 text-xs text-charcoal/50 mb-3">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span className="font-mono">₹{order.subtotal}</span>
+              </div>
+              {order.coupon?.discountAmount > 0 && (
+                <div className="flex justify-between text-turmeric">
+                  <span>Discount ({order.coupon.code})</span>
+                  <span className="font-mono">− ₹{order.coupon.discountAmount}</span>
+                </div>
+              )}
+              {(order.cgst > 0 || order.sgst > 0) && (
+                <div className="flex justify-between">
+                  <span>CGST + SGST</span>
+                  <span className="font-mono">₹{(order.cgst || 0) + (order.sgst || 0)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Delivery</span>
+                <span className="font-mono">{order.deliveryFee === 0 ? 'Free' : `₹${order.deliveryFee}`}</span>
+              </div>
+            </div>
+
+            <div className="border-t border-forest/10 pt-3 flex items-center justify-between text-sm flex-wrap gap-2">
               <span className="text-charcoal/50">
                 {new Date(order.createdAt).toLocaleDateString('en-IN', {
                   day: 'numeric',
@@ -187,7 +248,7 @@ export default function Orders() {
                   year: 'numeric',
                 })}
               </span>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="font-medium text-forest">Total: ₹{order.total}</span>
                 {order.paymentMethod === 'razorpay' && order.paymentStatus !== 'paid' && (
                   <button
@@ -198,6 +259,19 @@ export default function Orders() {
                     {payingId === order._id ? 'Opening…' : 'Pay Now'}
                   </button>
                 )}
+                <button
+                  onClick={() => handleDownloadInvoice(order)}
+                  disabled={invoiceId === order._id}
+                  className="text-xs font-medium text-charcoal/60 hover:text-forest border border-forest/15 px-3 py-1.5 rounded-full disabled:opacity-50"
+                >
+                  {invoiceId === order._id ? 'Preparing…' : '📄 Invoice'}
+                </button>
+                <button
+                  onClick={() => handleBuyAgain(order)}
+                  className="text-xs font-medium text-leaf hover:text-forest border border-leaf/30 px-3 py-1.5 rounded-full"
+                >
+                  ↻ Buy again
+                </button>
                 {['placed', 'confirmed'].includes(order.status) && (
                   <button
                     onClick={() => handleCancel(order)}

@@ -4,6 +4,10 @@ import Product from '../models/Product.js'
 import { emitNewOrder } from '../utils/socket.js'
 import { notifyAdminsOfNewOrder } from '../utils/notify.js'
 import { sendPushToUser } from '../utils/webpush.js'
+import { validateCouponForOrder } from '../utils/coupons.js'
+import { streamInvoicePdf } from '../utils/generateInvoicePdf.js'
+
+const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST = 5% total, split evenly
 
 function generateOrderNumber() {
   return `OFS${Math.floor(100000 + Math.random() * 900000)}`
@@ -15,7 +19,7 @@ function generateOrderNumber() {
 // For now, COD orders are marked pending and Razorpay orders are marked paid
 // once the client confirms a successful checkout.
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryAddress, deliverySlot, paymentMethod } = req.body
+  const { items, deliveryAddress, deliverySlot, paymentMethod, couponCode } = req.body
 
   if (!items || items.length === 0) {
     res.status(400)
@@ -40,6 +44,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     }
     return {
       product: dbProduct._id,
+      legacyId: dbProduct.legacyId,
       name: dbProduct.name,
       price: dbProduct.price,
       unit: dbProduct.unit,
@@ -49,8 +54,25 @@ export const createOrder = asyncHandler(async (req, res) => {
   })
 
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.qty, 0)
+
+  // Coupon — validated for real here regardless of what the client showed
+  // at checkout, so a forged discount amount can never slip through.
+  let discountAmount = 0
+  let appliedCoupon = null
+  if (couponCode) {
+    const result = await validateCouponForOrder(couponCode, subtotal)
+    appliedCoupon = result.coupon
+    discountAmount = result.discountAmount
+  }
+
+  const taxableAmount = subtotal - discountAmount
+  const cgst = Math.round(taxableAmount * GST_RATE)
+  const sgst = Math.round(taxableAmount * GST_RATE)
+
+  // Free-delivery threshold is based on cart value before any discount —
+  // matches how most grocery apps present it.
   const deliveryFee = subtotal >= 300 || subtotal === 0 ? 0 : 25
-  const total = subtotal + deliveryFee
+  const total = taxableAmount + cgst + sgst + deliveryFee
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
@@ -67,11 +89,19 @@ export const createOrder = asyncHandler(async (req, res) => {
     },
     deliverySlot,
     subtotal,
+    coupon: appliedCoupon ? { code: appliedCoupon.code, discountAmount } : undefined,
+    cgst,
+    sgst,
     deliveryFee,
     total,
     paymentMethod: paymentMethod === 'razorpay' ? 'razorpay' : 'cod',
     paymentStatus: paymentMethod === 'razorpay' ? 'pending' : 'pending',
   })
+
+  if (appliedCoupon) {
+    appliedCoupon.usedCount += 1
+    await appliedCoupon.save()
+  }
 
   // Let any connected admin dashboards know a new order just landed —
   // powers the live badge instead of a 30s poll.
@@ -271,4 +301,21 @@ export const updateOrderPaymentStatus = asyncHandler(async (req, res) => {
   order.paymentStatus = paymentStatus
   await order.save()
   res.json(order)
+})
+
+// @route  GET /api/orders/:id/invoice
+// @access Private (owner or admin)
+export const downloadInvoice = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id)
+  if (!order) {
+    res.status(404)
+    throw new Error('Order not found')
+  }
+  const isOwner = order.user.toString() === req.user._id.toString()
+  if (!isOwner && req.user.role !== 'admin') {
+    res.status(403)
+    throw new Error('Not authorized to view this invoice')
+  }
+
+  streamInvoicePdf(order, res)
 })

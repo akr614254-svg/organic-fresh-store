@@ -15,6 +15,7 @@ import orderRoutes from './routes/orderRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import pushRoutes from './routes/pushRoutes.js'
 import reviewRoutes from './routes/reviewRoutes.js'
+import couponRoutes from './routes/couponRoutes.js'
 
 await connectDB()
 
@@ -36,6 +37,7 @@ app.use('/api/orders', orderRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/push', pushRoutes)
 app.use('/api/reviews', reviewRoutes)
+app.use('/api/coupons', couponRoutes)
 
 app.use(notFound)
 app.use(errorHandler)

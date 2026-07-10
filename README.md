@@ -1,5 +1,28 @@
 # Organic Fresh — Online Vegetable Store
 
+## Extras: order tracking stepper, buy again, coupons, GST invoices ✅
+
+Added on top of the five core phases, closer to what a real storefront like
+Amazon/Blinkit does at checkout and order history:
+
+- **Order tracking stepper** — visual progress bar (Placed → Confirmed →
+  Packed → Out for delivery → Delivered) on `/orders`, with a distinct
+  cancelled state
+- **Buy again** — one tap re-adds every item from a past order back into the
+  cart, using the `legacyId` stored on each order line
+- **Coupon codes** — `POST /api/coupons/validate` for a live checkout
+  preview, re-validated server-side at order creation so a discount can
+  never be forged from the client. Admin CRUD at `/admin/coupons`.
+  Seed a few test codes with `npm run seed:coupons` (`WELCOME50`,
+  `FRESH10`, `BIGBASKET20`)
+- **GST-style invoice breakdown** — subtotal, coupon discount, CGST (2.5%),
+  SGST (2.5%), delivery fee, and total, shown at checkout, order
+  confirmation, and order history
+- **PDF invoice download** — server-generates a real PDF per order with
+  `pdfkit` (`GET /api/orders/:id/invoice`, streamed directly — no file
+  written to disk) and a **Download Invoice** button on both the
+  confirmation page and order history
+
 ## Phase 5: Razorpay, EmailJS, admin dashboard, deployment ✅
 
 What's new in this phase:
@@ -134,6 +157,7 @@ cd server
 npm install
 cp .env.example .env   # fill in your MongoDB Atlas URI + a JWT secret
 npm run seed            # loads the 32-item catalog into MongoDB
+npm run seed:coupons    # loads sample coupons: WELCOME50, FRESH10, BIGBASKET20
 npm run dev             # starts the API on http://localhost:5000
 ```
 

@@ -9,6 +9,7 @@ import {
   cancelOrder,
   requestReturn,
   resolveReturn,
+  downloadInvoice,
 } from '../controllers/orderController.js'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../controllers/paymentController.js'
 import { protect, adminOnly } from '../middleware/auth.js'
@@ -29,6 +30,7 @@ router.put('/:id/cancel', protect, cancelOrder)
 router.put('/:id/return', protect, requestReturn)
 
 router.get('/:id', protect, getOrderById)
+router.get('/:id/invoice', protect, downloadInvoice)
 
 // Admin order management — full dashboard UI lands alongside these routes
 router.get('/', protect, adminOnly, getAllOrders)

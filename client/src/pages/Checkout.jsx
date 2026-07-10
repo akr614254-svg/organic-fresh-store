@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import { placeOrder } from '../services/orderService'
 import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentService'
+import { validateCoupon } from '../services/couponService'
 import AddressPicker from '../components/AddressPicker'
 
 const SLOTS = ['7 – 9 AM', '11 AM – 1 PM', '3 – 5 PM', '6 – 8 PM']
+const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST, matches the server's calculation
 
 export default function Checkout() {
-  const { items, subtotal, deliveryFee, total, clearCart } = useCart()
+  const { items, subtotal, deliveryFee, clearCart } = useCart()
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
 
@@ -19,9 +21,22 @@ export default function Checkout() {
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState(null)
 
+  const [couponInput, setCouponInput] = useState('')
+  const [coupon, setCoupon] = useState(null) // { code, discountAmount }
+  const [couponError, setCouponError] = useState('')
+  const [applyingCoupon, setApplyingCoupon] = useState(false)
+
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
 
   const canPlaceOrder = form.name.trim() && form.phone.trim() && form.address.trim() && items.length > 0
+
+  // Live preview only — the server recomputes all of this for real at order
+  // creation, so a stale/forged number here can never actually be charged.
+  const discountAmount = coupon?.discountAmount || 0
+  const taxableAmount = Math.max(0, subtotal - discountAmount)
+  const cgst = Math.round(taxableAmount * GST_RATE)
+  const sgst = Math.round(taxableAmount * GST_RATE)
+  const total = useMemo(() => taxableAmount + cgst + sgst + deliveryFee, [taxableAmount, cgst, sgst, deliveryFee])
 
   if (items.length === 0) {
     return <Navigate to="/shop" replace />
@@ -31,6 +46,27 @@ export default function Checkout() {
     return <Navigate to="/login" replace state={{ from: { pathname: '/checkout' } }} />
   }
 
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return
+    setApplyingCoupon(true)
+    setCouponError('')
+    try {
+      const result = await validateCoupon(couponInput.trim(), subtotal)
+      setCoupon(result)
+    } catch (err) {
+      setCoupon(null)
+      setCouponError(err.response?.data?.message || err.message)
+    } finally {
+      setApplyingCoupon(false)
+    }
+  }
+
+  const removeCoupon = () => {
+    setCoupon(null)
+    setCouponInput('')
+    setCouponError('')
+  }
+
   const handlePlaceOrder = async (e) => {
     e.preventDefault()
     if (!canPlaceOrder) return
@@ -38,13 +74,16 @@ export default function Checkout() {
     setPlacing(true)
 
     try {
-      // 1. Create the order in our DB — always priced server-side. For COD
-      //    it's done at this point; for Razorpay, payment happens next.
+      // 1. Create the order in our DB — always priced server-side (subtotal,
+      //    coupon discount, and GST are all recalculated there, never trusted
+      //    from this preview). For COD it's done at this point; for
+      //    Razorpay, payment happens next.
       const created = await placeOrder({
         items,
         deliveryAddress: { name: form.name, phone: form.phone, address: form.address, lat: form.lat, lng: form.lng },
         deliverySlot: slot,
         paymentMethod: payment,
+        couponCode: coupon?.code,
       })
 
       let finalOrder = created
@@ -61,8 +100,14 @@ export default function Checkout() {
       }
 
       const order = {
+        _id: finalOrder._id,
         id: finalOrder.orderNumber,
         items: finalOrder.items,
+        subtotal: finalOrder.subtotal,
+        coupon: finalOrder.coupon,
+        cgst: finalOrder.cgst,
+        sgst: finalOrder.sgst,
+        deliveryFee: finalOrder.deliveryFee,
         total: finalOrder.total,
         slot: finalOrder.deliverySlot,
         name: finalOrder.deliveryAddress.name,
@@ -81,7 +126,7 @@ export default function Checkout() {
       setOrderError(
         payment === 'razorpay'
           ? `${err.message} Your order was saved — you can retry payment from Order History.`
-          : err.message,
+          : err.response?.data?.message || err.message,
       )
     } finally {
       setPlacing(false)
@@ -217,10 +262,57 @@ export default function Checkout() {
             ))}
           </div>
 
+          {/* Coupon */}
+          <div className="border-t border-forest/10 pt-4 mb-2">
+            {coupon ? (
+              <div className="flex items-center justify-between bg-sprout/20 rounded-xl px-3 py-2.5">
+                <div className="text-sm">
+                  <span className="font-mono font-medium text-forest">{coupon.code}</span>
+                  <span className="text-charcoal/50"> applied — saved ₹{coupon.discountAmount}</span>
+                </div>
+                <button type="button" onClick={removeCoupon} className="text-xs text-charcoal/40 hover:text-red-500">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  placeholder="Coupon code"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  className="flex-1 bg-cream/60 border border-forest/15 rounded-xl px-3 py-2 text-sm outline-none focus-visible:border-leaf uppercase"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={applyingCoupon || !couponInput.trim()}
+                  className="bg-forest text-cream text-sm font-medium px-4 py-2 rounded-xl hover:bg-leaf transition-colors disabled:opacity-50"
+                >
+                  {applyingCoupon ? '…' : 'Apply'}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="text-xs text-red-500 mt-1.5">{couponError}</p>}
+          </div>
+
           <div className="border-t border-forest/10 pt-4 flex flex-col gap-1.5 text-sm text-charcoal/60">
             <div className="flex justify-between">
               <span>Subtotal</span>
               <span className="font-mono">₹{subtotal}</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-turmeric">
+                <span>Discount ({coupon.code})</span>
+                <span className="font-mono">− ₹{discountAmount}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>CGST (2.5%)</span>
+              <span className="font-mono">₹{cgst}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>SGST (2.5%)</span>
+              <span className="font-mono">₹{sgst}</span>
             </div>
             <div className="flex justify-between">
               <span>Delivery</span>

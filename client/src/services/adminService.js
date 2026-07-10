@@ -56,3 +56,23 @@ export async function updateUserRole(id, role) {
   const { data } = await api.put(`/admin/users/${id}/role`, { role })
   return data
 }
+
+export async function fetchCoupons() {
+  const { data } = await api.get('/coupons')
+  return data
+}
+
+export async function createCoupon(payload) {
+  const { data } = await api.post('/coupons', payload)
+  return data
+}
+
+export async function updateCoupon(id, payload) {
+  const { data } = await api.put(`/coupons/${id}`, payload)
+  return data
+}
+
+export async function deleteCoupon(id) {
+  const { data } = await api.delete(`/coupons/${id}`)
+  return data
+}

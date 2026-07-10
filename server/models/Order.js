@@ -3,6 +3,10 @@ import mongoose from 'mongoose'
 const orderItemSchema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    // Mirrors the product catalog's legacyId at the time of purchase, so
+    // "Buy again" can re-add items to the cart without a lookup — and still
+    // works even if the product is later deleted or deactivated.
+    legacyId: { type: Number },
     name: { type: String, required: true },
     price: { type: Number, required: true },
     unit: { type: String, required: true },
@@ -31,6 +35,14 @@ const orderSchema = new mongoose.Schema(
     deliverySlot: { type: String, required: true },
 
     subtotal: { type: Number, required: true },
+    coupon: {
+      code: { type: String },
+      discountAmount: { type: Number, default: 0 },
+    },
+    // GST breakdown on the post-discount taxable amount. Split evenly across
+    // CGST + SGST per standard intra-state Indian tax presentation.
+    cgst: { type: Number, default: 0 },
+    sgst: { type: Number, default: 0 },
     deliveryFee: { type: Number, required: true, default: 0 },
     total: { type: Number, required: true },
 
