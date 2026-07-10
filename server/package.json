@@ -9,6 +9,7 @@
     "seed": "node seed/seedProducts.js",
     "seed:admin": "node seed/seedAdmin.js",
     "seed:coupons": "node seed/seedCoupons.js",
+    "backfill:legacyids": "node scripts/backfillLegacyIds.js",
     "generate:vapid": "node scripts/generateVapidKeys.js"
   },
   "dependencies": {
@@ -23,6 +24,9 @@
     "morgan": "^1.10.0",
     "razorpay": "^2.9.5",
     "socket.io": "^4.8.1",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.4.1",
+    "express-mongo-sanitize": "^2.2.0",
     "nodemailer": "^6.9.16",
     "web-push": "^3.6.7",
     "pdfkit": "^0.15.1"

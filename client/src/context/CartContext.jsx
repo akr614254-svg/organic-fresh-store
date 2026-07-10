@@ -28,12 +28,23 @@ export function CartProvider({ children }) {
   const addToCart = (product, qty = 1) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id)
+      const cap = product.stock ?? Infinity
       if (existing) {
-        return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + qty } : i))
+        return prev.map((i) =>
+          i.id === product.id ? { ...i, qty: Math.min(i.qty + qty, cap), stock: product.stock } : i
+        )
       }
       return [
         ...prev,
-        { id: product.id, name: product.name, price: product.price, unit: product.unit, emoji: product.emoji, qty },
+        {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          unit: product.unit,
+          emoji: product.emoji,
+          stock: product.stock,
+          qty: Math.min(qty, cap),
+        },
       ]
     })
     setDrawerOpen(true)
@@ -44,7 +55,9 @@ export function CartProvider({ children }) {
       removeFromCart(id)
       return
     }
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty } : i)))
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, qty: Math.min(qty, i.stock ?? Infinity) } : i))
+    )
   }
 
   const removeFromCart = (id) => {

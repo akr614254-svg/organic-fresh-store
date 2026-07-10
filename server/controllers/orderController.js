@@ -15,6 +15,14 @@ function generateOrderNumber() {
   return `OFS${Math.floor(100000 + Math.random() * 900000)}`
 }
 
+// Puts an order's items back into inventory — used when an order is
+// cancelled before shipping, or a return is approved after delivery.
+async function restoreStock(order) {
+  for (const item of order.items) {
+    await Product.updateOne({ _id: item.product }, { $inc: { stock: item.qty } })
+  }
+}
+
 // @route  POST /api/orders
 // @access Private
 // Payment verification (Razorpay signature check) hooks into this flow in Phase 5.
@@ -66,6 +74,25 @@ export const createOrder = asyncHandler(async (req, res) => {
   })
 
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.qty, 0)
+
+  // Reserve stock atomically per item. If any item doesn't have enough
+  // left, roll back whatever we already decremented in this same order so
+  // a failed checkout never silently eats real inventory.
+  const decremented = []
+  for (const item of orderItems) {
+    const result = await Product.updateOne(
+      { _id: item.product, stock: { $gte: item.qty } },
+      { $inc: { stock: -item.qty } }
+    )
+    if (result.matchedCount === 0) {
+      for (const done of decremented) {
+        await Product.updateOne({ _id: done.product }, { $inc: { stock: done.qty } })
+      }
+      res.status(409)
+      throw new Error(`Sorry, "${item.name}" just went out of stock. Please update your cart and try again.`)
+    }
+    decremented.push(item)
+  }
 
   // Coupon — validated for real here regardless of what the client showed
   // at checkout, so a forged discount amount can never slip through.
@@ -176,6 +203,7 @@ export const cancelOrder = asyncHandler(async (req, res) => {
 
   order.status = 'cancelled'
   await order.save()
+  await restoreStock(order)
   res.json(order)
 })
 
@@ -253,6 +281,7 @@ export const resolveReturn = asyncHandler(async (req, res) => {
     }
     order.returnRequest.refund = { status: 'scheduled', amount: order.total, scheduledFor: when }
     await order.save()
+    await restoreStock(order)
     sendPushToUser(order.user, {
       title: `Order #${order.orderNumber}`,
       body: `Your return was approved — a refund of ₹${order.total} is scheduled for ${when.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.`,
@@ -260,6 +289,7 @@ export const resolveReturn = asyncHandler(async (req, res) => {
     })
   } else if (approve) {
     await order.save()
+    await restoreStock(order)
     await issueRefund(order) // saves internally, routes to Razorpay or wallet, and sends its own push
   } else {
     await order.save()

@@ -4,6 +4,8 @@ import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import morgan from 'morgan'
+import helmet from 'helmet'
+import mongoSanitize from 'express-mongo-sanitize'
 
 import connectDB from './config/db.js'
 import { notFound, errorHandler } from './middleware/errorHandler.js'
@@ -17,20 +19,27 @@ import pushRoutes from './routes/pushRoutes.js'
 import reviewRoutes from './routes/reviewRoutes.js'
 import couponRoutes from './routes/couponRoutes.js'
 import { processDueScheduledRefunds } from './utils/refunds.js'
+import { apiLimiter, authLimiter } from './middleware/rateLimiter.js'
 
 await connectDB()
 
 const app = express()
 
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')
+app.use(helmet())
 app.use(cors({ origin: allowedOrigins, credentials: true }))
 app.use(express.json())
 app.use(cookieParser())
+app.use(mongoSanitize()) // strips $ / . operators from req.body/query/params — blocks NoSQL injection
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'))
 }
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'organic-fresh-api' }))
+
+app.use('/api', apiLimiter)
+app.use('/api/auth/login', authLimiter)
+app.use('/api/auth/register', authLimiter)
 
 app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)

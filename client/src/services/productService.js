@@ -1,27 +1,34 @@
 import api from './api'
 
-// The API returns Mongo's `_id`. The rest of the app (cart, wishlist,
-// product cards/pages) was built around a simple `id` field, so we
-// normalize every product coming from the API to also carry `id`.
-function normalize(product) {
-  return { ...product, id: product._id }
+// Cart, wishlist, orders, and reviews all key products by the numeric
+// `legacyId` (see server/models/Product.js), not Mongo's `_id`. Normalizing
+// here means every existing component built around `v.id` keeps working
+// unchanged, whether that product came from the original seed or was
+// created later in the admin dashboard (which auto-assigns a legacyId too).
+function normalize(p) {
+  return {
+    id: p.legacyId,
+    _id: p._id,
+    name: p.name,
+    category: p.category,
+    price: p.price,
+    unit: p.unit,
+    emoji: p.emoji || '🥬',
+    imageUrl: p.imageUrl || '',
+    rating: p.rating,
+    badge: p.badge,
+    desc: p.desc,
+    stock: p.stock,
+  }
 }
 
-// @desc   Fetch the live, active catalog from the API (replaces the old
-//         static client/src/data/vegetables.js list, which never reflected
-//         admin edits).
-export async function fetchProducts({ category, search } = {}) {
-  const { data } = await api.get('/products', {
-    params: {
-      category: category && category !== 'all' ? category : undefined,
-      search: search || undefined,
-      limit: 200,
-    },
-  })
-  return data.items.map(normalize)
+export async function fetchAllProducts() {
+  const { data } = await api.get('/products', { params: { limit: 500 } })
+  return data.items.filter((p) => p.legacyId != null).map(normalize)
 }
 
-export async function fetchProductById(id) {
-  const { data } = await api.get(`/products/${id}`)
-  return normalize(data)
+export async function fetchProductByLegacyId(legacyId) {
+  const { data } = await api.get('/products', { params: { legacyId, limit: 1 } })
+  const match = data.items[0]
+  return match ? normalize(match) : null
 }

@@ -1,5 +1,28 @@
 # Organic Fresh — Online Vegetable Store
 
+## Inventory enforcement, security hardening, live storefront catalog ✅
+
+- **Real stock enforcement** — `Product.stock` used to be cosmetic. Now:
+  - Placing an order atomically decrements stock per item and rolls back
+    the whole reservation if any single item runs out mid-checkout (no
+    overselling under concurrent orders)
+  - Cancelling an order, or an admin approving a return, puts the stock
+    back
+  - Out-of-stock items show a badge and a disabled "Sold Out" button;
+    low-stock items show "Only X left"; cart quantity controls are capped
+    at available stock
+- **API security hardening** — `helmet` (secure headers),
+  `express-rate-limit` (300 req/15min general, 20 req/15min on
+  login/register specifically), `express-mongo-sanitize` (strips
+  `$`/`.` operators from input to block NoSQL injection)
+- **`/shop` now reads the live Product API**, not the local
+  `data/vegetables.js` file — admin add/edit/delete shows up for shoppers
+  immediately. Cart, wishlist, orders, and reviews still key off each
+  product's `legacyId` under the hood, so nothing else had to change.
+  Admin-created products get a `legacyId` auto-assigned on creation; if
+  you already created products before this update, run
+  `npm run backfill:legacyids` once in `server/` to backfill them.
+
 ## Extras: order tracking stepper, buy again, coupons, GST invoices ✅
 
 Added on top of the five core phases, closer to what a real storefront like

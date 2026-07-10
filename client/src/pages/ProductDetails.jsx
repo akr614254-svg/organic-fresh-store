@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import StarRating from '../components/StarRating'
-import { vegetables, categories } from '../data/vegetables'
+import { categories } from '../data/vegetables'
+import { fetchProductByLegacyId, fetchAllProducts } from '../services/productService'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import { useAuth } from '../context/AuthContext'
@@ -10,7 +11,9 @@ import { fetchReviews, submitReview, deleteMyReview } from '../services/reviewSe
 
 export default function ProductDetails() {
   const { id } = useParams()
-  const product = vegetables.find((v) => String(v.id) === id)
+  const [product, setProduct] = useState(null)
+  const [related, setRelated] = useState([])
+  const [loading, setLoading] = useState(true)
   const [qty, setQty] = useState(1)
   const { addToCart } = useCart()
   const { isWishlisted, toggleWishlist } = useWishlist()
@@ -25,6 +28,21 @@ export default function ProductDetails() {
   const [reviewError, setReviewError] = useState('')
 
   const myExistingReview = reviews.find((r) => r.user === user?.id)
+
+  useEffect(() => {
+    setLoading(true)
+    setQty(1)
+    fetchProductByLegacyId(id)
+      .then(async (p) => {
+        setProduct(p)
+        if (p) {
+          const all = await fetchAllProducts()
+          setRelated(all.filter((v) => v.category === p.category && v.id !== p.id).slice(0, 4))
+        }
+      })
+      .catch(() => setProduct(null))
+      .finally(() => setLoading(false))
+  }, [id])
 
   useEffect(() => {
     if (!product) return
@@ -80,6 +98,14 @@ export default function ProductDetails() {
     }
   }
 
+  if (loading) {
+    return (
+      <section className="max-w-3xl mx-auto px-5 py-24 text-center text-charcoal/50">
+        Loading…
+      </section>
+    )
+  }
+
   if (!product) {
     return (
       <section className="max-w-3xl mx-auto px-5 py-24 text-center">
@@ -96,9 +122,8 @@ export default function ProductDetails() {
   }
 
   const category = categories.find((c) => c.id === product.category)
-  const related = vegetables
-    .filter((v) => v.category === product.category && v.id !== product.id)
-    .slice(0, 4)
+  const outOfStock = product.stock <= 0
+  const lowStock = product.stock > 0 && product.stock <= 5
 
   return (
     <section className="max-w-6xl mx-auto px-5 md:px-8 py-10">
@@ -111,8 +136,12 @@ export default function ProductDetails() {
       </nav>
 
       <div className="grid md:grid-cols-2 gap-10">
-        <div className="bg-sprout/40 rounded-3xl aspect-square flex items-center justify-center text-[8rem]">
-          {product.emoji}
+        <div className="bg-sprout/40 rounded-3xl aspect-square flex items-center justify-center text-[8rem] overflow-hidden">
+          {product.imageUrl ? (
+            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            product.emoji
+          )}
         </div>
 
         <div>
@@ -139,19 +168,27 @@ export default function ProductDetails() {
             <span className="text-charcoal/50 text-sm">/ {product.unit}</span>
           </div>
 
+          {outOfStock ? (
+            <p className="mt-2 text-sm font-medium text-red-500">Out of stock</p>
+          ) : lowStock ? (
+            <p className="mt-2 text-sm font-medium text-turmeric">Only {product.stock} left</p>
+          ) : null}
+
           <div className="mt-6 flex items-center gap-4">
             <div className="flex items-center border border-forest/15 rounded-full">
               <button
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
-                className="w-10 h-10 text-forest hover:bg-sprout/30 rounded-full"
+                disabled={outOfStock}
+                className="w-10 h-10 text-forest hover:bg-sprout/30 rounded-full disabled:opacity-40"
                 aria-label="Decrease quantity"
               >
                 −
               </button>
               <span className="w-8 text-center font-mono">{qty}</span>
               <button
-                onClick={() => setQty((q) => q + 1)}
-                className="w-10 h-10 text-forest hover:bg-sprout/30 rounded-full"
+                onClick={() => setQty((q) => Math.min(product.stock, q + 1))}
+                disabled={outOfStock || qty >= product.stock}
+                className="w-10 h-10 text-forest hover:bg-sprout/30 rounded-full disabled:opacity-40"
                 aria-label="Increase quantity"
               >
                 +
@@ -160,9 +197,10 @@ export default function ProductDetails() {
 
             <button
               onClick={() => addToCart(product, qty)}
-              className="flex-1 bg-forest text-cream font-medium px-6 py-3 rounded-full hover:bg-leaf transition-colors"
+              disabled={outOfStock}
+              className="flex-1 bg-forest text-cream font-medium px-6 py-3 rounded-full hover:bg-leaf transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Add to Cart · ₹{product.price * qty}
+              {outOfStock ? 'Out of Stock' : `Add to Cart · ₹${product.price * qty}`}
             </button>
           </div>
 

@@ -88,12 +88,16 @@ export default function CartDrawer() {
                         <span className="w-6 text-center font-mono text-sm">{item.qty}</span>
                         <button
                           onClick={() => updateQty(item.id, item.qty + 1)}
-                          className="w-8 h-8 text-forest hover:bg-sprout/30 rounded-full"
+                          disabled={item.stock != null && item.qty >= item.stock}
+                          className="w-8 h-8 text-forest hover:bg-sprout/30 rounded-full disabled:opacity-30 disabled:hover:bg-transparent"
                           aria-label={`Increase ${item.name} quantity`}
                         >
                           +
                         </button>
                       </div>
+                      {item.stock != null && item.qty >= item.stock && (
+                        <span className="text-[10px] text-turmeric shrink-0">Max stock</span>
+                      )}
                       <button
                         onClick={() => removeFromCart(item.id)}
                         aria-label={`Remove ${item.name}`}
