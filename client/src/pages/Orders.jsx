@@ -232,7 +232,8 @@ export default function Orders() {
                   )}
                   {order.returnRequest.refund.status === 'processing' && '⏳ Refund is being processed…'}
                   {order.returnRequest.refund.status === 'completed' && (
-                    <>✅ ₹{order.returnRequest.refund.amount} refunded on{' '}
+                    <>{order.returnRequest.refund.method === 'wallet' ? '💰' : '✅'} ₹{order.returnRequest.refund.amount}{' '}
+                      {order.returnRequest.refund.method === 'wallet' ? 'added to your wallet' : 'refunded'} on{' '}
                       {new Date(order.returnRequest.refund.processedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                     </>
                   )}
@@ -273,6 +274,12 @@ export default function Orders() {
                 <span>Delivery</span>
                 <span className="font-mono">{order.deliveryFee === 0 ? 'Free' : `₹${order.deliveryFee}`}</span>
               </div>
+              {order.walletAmountUsed > 0 && (
+                <div className="flex justify-between text-forest">
+                  <span>💰 Wallet used</span>
+                  <span className="font-mono">− ₹{order.walletAmountUsed}</span>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-forest/10 pt-3 flex items-center justify-between text-sm flex-wrap gap-2">

@@ -1,12 +1,13 @@
 import asyncHandler from 'express-async-handler'
 import Order from '../models/Order.js'
 import Product from '../models/Product.js'
+import User from '../models/User.js'
 import { emitNewOrder } from '../utils/socket.js'
 import { notifyAdminsOfNewOrder } from '../utils/notify.js'
 import { sendPushToUser } from '../utils/webpush.js'
 import { validateCouponForOrder } from '../utils/coupons.js'
 import { streamInvoicePdf } from '../utils/generateInvoicePdf.js'
-import { issueRefund, isAutoRefundable } from '../utils/refunds.js'
+import { issueRefund } from '../utils/refunds.js'
 
 const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST = 5% total, split evenly
 
@@ -20,7 +21,7 @@ function generateOrderNumber() {
 // For now, COD orders are marked pending and Razorpay orders are marked paid
 // once the client confirms a successful checkout.
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode } = req.body
+  const { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet } = req.body
 
   if (!items || items.length === 0) {
     res.status(400)
@@ -83,7 +84,18 @@ export const createOrder = asyncHandler(async (req, res) => {
   // Free-delivery threshold is based on cart value before any discount —
   // matches how most grocery apps present it.
   const deliveryFee = subtotal >= 300 || subtotal === 0 ? 0 : 25
-  const total = taxableAmount + cgst + sgst + deliveryFee
+  const grossTotal = taxableAmount + cgst + sgst + deliveryFee
+
+  // Wallet balance — re-checked here against the real DB value, never
+  // trusted from the client. Applied after tax/delivery, same position a
+  // gift card would sit at. Can cover the order fully (paymentMethod stays
+  // as chosen for record-keeping, but nothing further is actually charged).
+  let walletAmountUsed = 0
+  if (useWallet && req.user.walletBalance > 0) {
+    walletAmountUsed = Math.min(req.user.walletBalance, grossTotal)
+  }
+  const total = grossTotal - walletAmountUsed
+  const fullyCoveredByWallet = total <= 0 && walletAmountUsed > 0
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
@@ -106,9 +118,17 @@ export const createOrder = asyncHandler(async (req, res) => {
     sgst,
     deliveryFee,
     total,
+    walletAmountUsed,
     paymentMethod: paymentMethod === 'razorpay' ? 'razorpay' : 'cod',
-    paymentStatus: paymentMethod === 'razorpay' ? 'pending' : 'pending',
+    // If wallet balance covers the whole order, there's nothing left to
+    // actually charge — mark it paid immediately regardless of the chosen
+    // gateway, so the client knows to skip opening Razorpay checkout.
+    paymentStatus: fullyCoveredByWallet ? 'paid' : 'pending',
   })
+
+  if (walletAmountUsed > 0) {
+    await User.findByIdAndUpdate(req.user._id, { $inc: { walletBalance: -walletAmountUsed } })
+  }
 
   if (appliedCoupon) {
     appliedCoupon.usedCount += 1
@@ -207,7 +227,9 @@ export const requestReturn = asyncHandler(async (req, res) => {
 // @access Private/Admin
 // approve: true/false. When approving, optionally pass scheduledFor (an
 // ISO date/time) to schedule the refund for later instead of issuing it
-// immediately — e.g. to line up with a specific accounting date.
+// immediately — e.g. to line up with a specific accounting date. Works the
+// same whether the refund ends up going to Razorpay or to wallet credit;
+// issueRefund() decides which at the moment it actually runs.
 export const resolveReturn = asyncHandler(async (req, res) => {
   const { approve, scheduledFor } = req.body
   const order = await Order.findById(req.params.id)
@@ -223,34 +245,27 @@ export const resolveReturn = asyncHandler(async (req, res) => {
   order.returnRequest.status = approve ? 'approved' : 'rejected'
   order.returnRequest.resolvedAt = new Date()
 
-  if (approve && isAutoRefundable(order)) {
-    if (scheduledFor) {
-      const when = new Date(scheduledFor)
-      if (Number.isNaN(when.getTime()) || when < new Date()) {
-        res.status(400)
-        throw new Error('Scheduled refund date must be a valid date in the future')
-      }
-      order.returnRequest.refund = { status: 'scheduled', amount: order.total, scheduledFor: when }
-      await order.save()
-      sendPushToUser(order.user, {
-        title: `Order #${order.orderNumber}`,
-        body: `Your return was approved — a refund of ₹${order.total} is scheduled for ${when.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.`,
-        url: '/orders',
-      })
-    } else {
-      await order.save()
-      await issueRefund(order) // saves internally, issues the refund right away, and sends its own push on completion
+  if (approve && scheduledFor) {
+    const when = new Date(scheduledFor)
+    if (Number.isNaN(when.getTime()) || when < new Date()) {
+      res.status(400)
+      throw new Error('Scheduled refund date must be a valid date in the future')
     }
-  } else {
+    order.returnRequest.refund = { status: 'scheduled', amount: order.total, scheduledFor: when }
     await order.save()
-  }
-
-  if (!approve || !isAutoRefundable(order)) {
     sendPushToUser(order.user, {
       title: `Order #${order.orderNumber}`,
-      body: approve
-        ? 'Your return request was approved. Since this order wasn\u2019t paid online, please arrange your refund with the store.'
-        : 'Your return request was reviewed and could not be approved.',
+      body: `Your return was approved — a refund of ₹${order.total} is scheduled for ${when.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.`,
+      url: '/orders',
+    })
+  } else if (approve) {
+    await order.save()
+    await issueRefund(order) // saves internally, routes to Razorpay or wallet, and sends its own push
+  } else {
+    await order.save()
+    sendPushToUser(order.user, {
+      title: `Order #${order.orderNumber}`,
+      body: 'Your return request was reviewed and could not be approved.',
       url: '/orders',
     })
   }

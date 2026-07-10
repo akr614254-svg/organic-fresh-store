@@ -93,6 +93,12 @@ export default function OrderConfirmation() {
             <span>Delivery</span>
             <span className="font-mono">{order.deliveryFee === 0 ? 'Free' : `₹${order.deliveryFee}`}</span>
           </div>
+          {order.walletAmountUsed > 0 && (
+            <div className="flex justify-between text-forest">
+              <span>💰 Wallet used</span>
+              <span className="font-mono">− ₹{order.walletAmountUsed}</span>
+            </div>
+          )}
         </div>
 
         {order.paymentMethod && (
@@ -100,7 +106,11 @@ export default function OrderConfirmation() {
             <span>Payment</span>
             <span className="font-medium text-charcoal capitalize">
               {order.paymentMethod === 'razorpay'
-                ? order.paymentStatus === 'paid' ? 'Paid online' : 'Payment pending'
+                ? order.paymentStatus === 'paid'
+                  ? order.total === 0 && order.walletAmountUsed > 0
+                    ? 'Paid with wallet'
+                    : 'Paid online'
+                  : 'Payment pending'
                 : 'Cash on delivery'}
             </span>
           </div>

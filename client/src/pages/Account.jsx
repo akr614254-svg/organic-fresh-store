@@ -47,6 +47,19 @@ export default function Account() {
       <h1 className="font-display text-3xl text-forest font-semibold mb-2">Your account</h1>
       <p className="text-sm text-charcoal/50 mb-8">{user?.name} · {user?.email}</p>
 
+      <div className={`bg-forest text-cream rounded-2xl p-5 flex items-center justify-between ${user?.walletBalance > 0 ? 'mb-2' : 'mb-8'}`}>
+        <div>
+          <p className="text-xs text-cream/60 mb-1">Wallet balance</p>
+          <p className="text-2xl font-display font-semibold">₹{user?.walletBalance || 0}</p>
+        </div>
+        <span className="text-3xl">💰</span>
+      </div>
+      {user?.walletBalance > 0 && (
+        <p className="text-xs text-charcoal/40 mb-8">
+          Credited from approved returns — apply it at checkout to reduce your next order's total.
+        </p>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-medium text-forest">Saved addresses</h2>
         {!showForm && (

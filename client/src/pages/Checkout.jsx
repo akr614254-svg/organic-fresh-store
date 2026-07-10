@@ -43,6 +43,7 @@ export default function Checkout() {
   const [coupon, setCoupon] = useState(null) // { code, discountAmount }
   const [couponError, setCouponError] = useState('')
   const [applyingCoupon, setApplyingCoupon] = useState(false)
+  const [useWallet, setUseWallet] = useState(false)
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
 
@@ -54,7 +55,10 @@ export default function Checkout() {
   const taxableAmount = Math.max(0, subtotal - discountAmount)
   const cgst = Math.round(taxableAmount * GST_RATE)
   const sgst = Math.round(taxableAmount * GST_RATE)
-  const total = useMemo(() => taxableAmount + cgst + sgst + deliveryFee, [taxableAmount, cgst, sgst, deliveryFee])
+  const grossTotal = useMemo(() => taxableAmount + cgst + sgst + deliveryFee, [taxableAmount, cgst, sgst, deliveryFee])
+  const walletBalance = user?.walletBalance || 0
+  const walletApplied = useWallet ? Math.min(walletBalance, grossTotal) : 0
+  const total = grossTotal - walletApplied
 
   if (items.length === 0) {
     return <Navigate to="/shop" replace />
@@ -103,11 +107,12 @@ export default function Checkout() {
         deliveryDate,
         paymentMethod: payment,
         couponCode: coupon?.code,
+        useWallet,
       })
 
       let finalOrder = created
 
-      if (payment === 'razorpay') {
+      if (payment === 'razorpay' && created.paymentStatus !== 'paid') {
         // 2. Ask our backend to open a Razorpay order for this exact total.
         const gateway = await createRazorpayOrder(created._id)
         // 3. Launch the Razorpay checkout modal and wait for a verified payment.
@@ -127,6 +132,7 @@ export default function Checkout() {
         cgst: finalOrder.cgst,
         sgst: finalOrder.sgst,
         deliveryFee: finalOrder.deliveryFee,
+        walletAmountUsed: finalOrder.walletAmountUsed,
         total: finalOrder.total,
         slot: finalOrder.deliverySlot,
         deliveryDate: finalOrder.deliveryDate,
@@ -315,6 +321,24 @@ export default function Checkout() {
             ))}
           </div>
 
+          {/* Wallet */}
+          {walletBalance > 0 && (
+            <div className="border-t border-forest/10 pt-4 mb-2">
+              <label className="flex items-center justify-between gap-3 bg-sprout/15 rounded-xl px-3 py-2.5 cursor-pointer">
+                <span className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={useWallet}
+                    onChange={(e) => setUseWallet(e.target.checked)}
+                    className="accent-leaf"
+                  />
+                  💰 Use wallet balance
+                </span>
+                <span className="text-xs font-mono text-forest">₹{walletBalance} available</span>
+              </label>
+            </div>
+          )}
+
           {/* Coupon */}
           <div className="border-t border-forest/10 pt-4 mb-2">
             {coupon ? (
@@ -371,6 +395,12 @@ export default function Checkout() {
               <span>Delivery</span>
               <span className="font-mono">{deliveryFee === 0 ? 'Free' : `₹${deliveryFee}`}</span>
             </div>
+            {walletApplied > 0 && (
+              <div className="flex justify-between text-forest">
+                <span>💰 Wallet used</span>
+                <span className="font-mono">− ₹{walletApplied}</span>
+              </div>
+            )}
             <div className="flex justify-between text-forest font-medium text-base pt-1">
               <span>Total</span>
               <span className="font-mono">₹{total}</span>

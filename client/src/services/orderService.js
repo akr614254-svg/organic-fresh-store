@@ -1,7 +1,7 @@
 import api from './api'
 
-export async function placeOrder({ items, deliveryAddress, deliverySlot, paymentMethod, couponCode }) {
-  const { data } = await api.post('/orders', { items, deliveryAddress, deliverySlot, paymentMethod, couponCode })
+export async function placeOrder({ items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet }) {
+  const { data } = await api.post('/orders', { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet })
   return data
 }
 

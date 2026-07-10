@@ -20,6 +20,11 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
     addresses: [addressSchema],
+    // Store credit — the automatic fallback refund method for orders that
+    // can't be refunded to a real online payment (COD, or a Razorpay order
+    // with no actual payment record). Customers can spend this at checkout
+    // like a discount. See server/utils/refunds.js and orderController.js.
+    walletBalance: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 )
@@ -43,6 +48,7 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     phone: this.phone,
     role: this.role,
     addresses: this.addresses,
+    walletBalance: this.walletBalance,
   }
 }
 

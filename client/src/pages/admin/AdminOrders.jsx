@@ -242,17 +242,14 @@ export default function AdminOrders() {
                         <p className="text-[11px] text-charcoal/50">⏳ Refund processing…</p>
                       )}
                       {o.returnRequest.refund?.status === 'completed' && (
-                        <p className="text-[11px] text-charcoal/50">✅ Refunded ₹{o.returnRequest.refund.amount}</p>
+                        <p className="text-[11px] text-charcoal/50">
+                          {o.returnRequest.refund.method === 'wallet'
+                            ? `💰 ₹${o.returnRequest.refund.amount} credited to wallet`
+                            : `✅ Refunded ₹${o.returnRequest.refund.amount}`}
+                        </p>
                       )}
                       {o.returnRequest.refund?.status === 'failed' && (
                         <p className="text-[11px] text-red-500" title={o.returnRequest.refund.failureReason}>⚠️ Refund failed</p>
-                      )}
-                      {(!o.returnRequest.refund || o.returnRequest.refund.status === 'none') && (
-                        <p className="text-[11px] text-charcoal/40">
-                          {o.paymentMethod === 'cod'
-                            ? 'Manual refund needed (COD — hand back cash)'
-                            : 'Manual refund needed — no online payment record found for this order'}
-                        </p>
                       )}
                     </div>
                   )}

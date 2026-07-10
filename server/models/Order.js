@@ -48,6 +48,10 @@ const orderSchema = new mongoose.Schema(
     sgst: { type: Number, default: 0 },
     deliveryFee: { type: Number, required: true, default: 0 },
     total: { type: Number, required: true },
+    // Wallet balance spent at checkout, separate from `total` (which is
+    // only the amount actually charged via Razorpay/COD). Restored back to
+    // the wallet automatically if a return on this order is later approved.
+    walletAmountUsed: { type: Number, default: 0 },
 
     paymentMethod: { type: String, enum: ['razorpay', 'cod'], default: 'cod' },
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
@@ -78,6 +82,7 @@ const orderSchema = new mongoose.Schema(
           enum: ['none', 'scheduled', 'processing', 'completed', 'failed'],
           default: 'none',
         },
+        method: { type: String, enum: ['razorpay', 'wallet'] },
         amount: { type: Number },
         scheduledFor: { type: Date },
         razorpayRefundId: { type: String },
