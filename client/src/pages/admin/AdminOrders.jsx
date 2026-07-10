@@ -248,7 +248,11 @@ export default function AdminOrders() {
                         <p className="text-[11px] text-red-500" title={o.returnRequest.refund.failureReason}>⚠️ Refund failed</p>
                       )}
                       {(!o.returnRequest.refund || o.returnRequest.refund.status === 'none') && (
-                        <p className="text-[11px] text-charcoal/40">Manual refund needed (COD)</p>
+                        <p className="text-[11px] text-charcoal/40">
+                          {o.paymentMethod === 'cod'
+                            ? 'Manual refund needed (COD — hand back cash)'
+                            : 'Manual refund needed — no online payment record found for this order'}
+                        </p>
                       )}
                     </div>
                   )}
