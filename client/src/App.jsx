@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { HelmetProvider } from 'react-helmet-async'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
 import { WishlistProvider } from './context/WishlistContext'
@@ -29,8 +28,7 @@ import InstallPrompt from './components/InstallPrompt'
 
 function App() {
   return (
-    <HelmetProvider>
-      <ThemeProvider>
+    <ThemeProvider>
       <AuthProvider>
         <CartProvider>
           <WishlistProvider>
@@ -86,7 +84,6 @@ function App() {
         </CartProvider>
       </AuthProvider>
     </ThemeProvider>
-    </HelmetProvider>
   )
 }
 

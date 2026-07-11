@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Helmet } from 'react-helmet-async'
+import Seo from '../components/Seo'
 import { useSearchParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import { categories } from '../data/vegetables'
@@ -94,10 +94,10 @@ export default function Products() {
 
   return (
     <section className="max-w-7xl mx-auto px-5 md:px-8 py-10">
-      <Helmet>
-        <title>Shop Fresh Vegetables — Organic Fresh Store</title>
-        <meta name="description" content="Browse our full catalog of organic vegetables and fruit, filter by category and price, and get it delivered in a slot that suits you." />
-      </Helmet>
+      <Seo
+        title="Shop Fresh Vegetables — Organic Fresh Store"
+        description="Browse our full catalog of organic vegetables and fruit, filter by category and price, and get it delivered in a slot that suits you."
+      />
       <div className="mb-8">
         <span className="text-xs font-mono uppercase tracking-wide text-leaf">Full catalog</span>
         <h1 className="font-display text-3xl md:text-4xl text-forest font-semibold mt-1">

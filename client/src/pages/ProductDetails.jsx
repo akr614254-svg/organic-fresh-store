@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Helmet } from 'react-helmet-async'
+import Seo from '../components/Seo'
 import { Link, useParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import StarRating from '../components/StarRating'
@@ -132,10 +132,10 @@ export default function ProductDetails() {
 
   return (
     <section className="max-w-6xl mx-auto px-5 md:px-8 py-10">
-      <Helmet>
-        <title>{product.name} — Organic Fresh Store</title>
-        <meta name="description" content={`Buy fresh ${product.name} online, ₹${product.price} per ${product.unit}. Organic, locally sourced, delivered to your door.`} />
-      </Helmet>
+      <Seo
+        title={`${product.name} — Organic Fresh Store`}
+        description={`Buy fresh ${product.name} online, ₹${product.price} per ${product.unit}. Organic, locally sourced, delivered to your door.`}
+      />
       <nav className="text-sm text-charcoal/50 mb-6">
         <Link to="/" className="hover:text-leaf">Home</Link>
         <span className="mx-2">/</span>
