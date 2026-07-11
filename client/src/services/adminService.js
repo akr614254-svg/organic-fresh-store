@@ -1,7 +1,7 @@
 import api from './api'
 
-export async function fetchStats() {
-  const { data } = await api.get('/admin/stats')
+export async function fetchStats({ from, to } = {}) {
+  const { data } = await api.get('/admin/stats', { params: { from, to } })
   return data
 }
 

@@ -1,5 +1,31 @@
 # Organic Fresh — Online Vegetable Store
 
+## Live tracking, richer admin analytics, low-stock alerts, automated tests ✅
+
+- **Simulated live delivery tracking** — once an order status becomes "out
+  for delivery," the order card shows a Leaflet map with an animated 🛵
+  moving from the store toward the delivery pin, plus an ETA. It's a
+  straight-line simulation over a fixed duration (`SIMULATED_DELIVERY_MINUTES`
+  in `LiveTrackingMap.jsx`), clearly labeled as an estimate — swapping in a
+  real driver GPS feed later just means replacing how the position is
+  computed, everything else stays the same. Orders placed without a map pin
+  show a graceful fallback message instead.
+- **Richer admin dashboard** — date-range picker (with 7/14/30-day presets)
+  now drives the sales chart, a "Top customers" panel ranks spend within
+  the selected range, and CSV export on the Orders page downloads every
+  order's items, pricing breakdown, and status as a spreadsheet.
+- **Low-stock alerts** — the dashboard now surfaces any active product at
+  or below 10 units (via `/api/admin/stats`) as a banner linking straight
+  to Products, so restocking happens before something actually sells out.
+- **Automated tests** — `npm test` in both `client/` and `server/` (via
+  Vitest). The order pricing math (GST, delivery fee, wallet, discount
+  capping) and coupon validation math were extracted into pure,
+  side-effect-free functions (`server/utils/orderPricing.js`,
+  `server/utils/couponMath.js`) specifically so they're testable without a
+  database — `orderController.js` now calls these same functions instead
+  of duplicating the logic inline. Cart stock-capping math was similarly
+  extracted client-side into `client/src/utils/cartMath.js`.
+
 ## Inventory enforcement, security hardening, live storefront catalog ✅
 
 - **Real stock enforcement** — `Product.stock` used to be cosmetic. Now:

@@ -4,20 +4,37 @@ import Product from '../models/Product.js'
 import User from '../models/User.js'
 import { processDueScheduledRefunds } from '../utils/refunds.js'
 
-// @route  GET /api/admin/stats
+// @route  GET /api/admin/stats?from=&to=&lowStockThreshold=
 // @access Private/Admin
 export const getStats = asyncHandler(async (req, res) => {
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-  sevenDaysAgo.setHours(0, 0, 0, 0)
+  const { from, to, lowStockThreshold = 10 } = req.query
 
-  const [totalOrders, totalProducts, totalUsers, paidOrders, salesByDay, recentOrders] = await Promise.all([
+  // Defaults to the last 7 days when no range is given, same as before —
+  // the date pickers on the dashboard just override this.
+  const rangeStart = from ? new Date(from) : (() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 6)
+    d.setHours(0, 0, 0, 0)
+    return d
+  })()
+  const rangeEnd = to ? new Date(new Date(to).setHours(23, 59, 59, 999)) : new Date()
+
+  const [
+    totalOrders,
+    totalProducts,
+    totalUsers,
+    paidOrders,
+    salesByDay,
+    recentOrders,
+    topCustomers,
+    lowStockProducts,
+  ] = await Promise.all([
     Order.countDocuments(),
     Product.countDocuments(),
     User.countDocuments(),
     Order.find({ paymentStatus: 'paid' }).select('total').lean(),
     Order.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      { $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -28,12 +45,29 @@ export const getStats = asyncHandler(async (req, res) => {
       { $sort: { _id: 1 } },
     ]),
     Order.find().sort({ createdAt: -1 }).limit(5).populate('user', 'name email'),
+    // Ranked by total ₹ spent within the selected range — surfaces who to
+    // prioritize for loyalty outreach, not just who orders most often.
+    Order.aggregate([
+      { $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
+      { $group: { _id: '$user', totalSpent: { $sum: '$total' }, orderCount: { $sum: 1 } } },
+      { $sort: { totalSpent: -1 } },
+      { $limit: 5 },
+      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+      { $unwind: '$user' },
+      { $project: { totalSpent: 1, orderCount: 1, name: '$user.name', email: '$user.email' } },
+    ]),
+    Product.find({ isActive: true, stock: { $lte: Number(lowStockThreshold) } })
+      .sort({ stock: 1 })
+      .select('name stock legacyId emoji'),
   ])
 
   // Cash-on-delivery orders count toward "orders placed" revenue too, so the
   // dashboard reflects total order value rather than only verified payments.
   const allOrders = await Order.find().select('total').lean()
   const totalSales = allOrders.reduce((sum, o) => sum + o.total, 0)
+
+  const rangeOrders = salesByDay.reduce((sum, d) => sum + d.orders, 0)
+  const rangeSales = salesByDay.reduce((sum, d) => sum + d.total, 0)
 
   res.json({
     totalOrders,
@@ -42,7 +76,11 @@ export const getStats = asyncHandler(async (req, res) => {
     totalSales,
     verifiedPayments: paidOrders.length,
     salesByDay: salesByDay.map((d) => ({ date: d._id, total: d.total, orders: d.orders })),
+    rangeSales,
+    rangeOrders,
     recentOrders,
+    topCustomers,
+    lowStockProducts,
   })
 })
 

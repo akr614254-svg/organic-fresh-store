@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchAllOrders, updateOrderStatus, updateOrderPaymentStatus, resolveReturn, processRefundsNow } from '../../services/adminService'
 import { useAdminOrdersSocket } from '../../context/AdminOrdersSocketContext'
+import { downloadCsv } from '../../utils/exportCsv'
 
 const STATUSES = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled']
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed']
@@ -79,12 +80,42 @@ export default function AdminOrders() {
     }
   }
 
+  const handleExportCsv = () => {
+    if (!orders || orders.length === 0) return
+    const rows = orders.map((o) => ({
+      OrderNumber: o.orderNumber,
+      Date: new Date(o.createdAt).toLocaleDateString('en-IN'),
+      Customer: o.user?.name || 'Unknown',
+      Email: o.user?.email || '',
+      Items: o.items.map((i) => `${i.name} x${i.qty}`).join('; '),
+      Subtotal: o.subtotal,
+      Discount: o.coupon?.discountAmount || 0,
+      CGST: o.cgst || 0,
+      SGST: o.sgst || 0,
+      DeliveryFee: o.deliveryFee,
+      WalletUsed: o.walletAmountUsed || 0,
+      Total: o.total,
+      PaymentMethod: o.paymentMethod,
+      PaymentStatus: o.paymentStatus,
+      OrderStatus: o.status,
+      DeliveryAddress: o.deliveryAddress?.address || '',
+    }))
+    downloadCsv(`organic-fresh-orders-${new Date().toISOString().slice(0, 10)}.csv`, rows)
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="font-display text-2xl text-forest font-semibold">Orders</h1>
         <div className="flex items-center gap-3">
           {refundNotice && <span className="text-xs text-charcoal/50">{refundNotice}</span>}
+          <button
+            onClick={handleExportCsv}
+            disabled={!orders || orders.length === 0}
+            className="text-xs font-medium bg-white border border-forest/15 text-charcoal/70 px-3 py-2 rounded-full hover:border-leaf disabled:opacity-50"
+          >
+            ⬇ Export CSV
+          </button>
           <button
             onClick={handleProcessRefundsNow}
             disabled={processingRefunds}

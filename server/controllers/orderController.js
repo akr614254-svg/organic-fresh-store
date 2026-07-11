@@ -6,10 +6,9 @@ import { emitNewOrder } from '../utils/socket.js'
 import { notifyAdminsOfNewOrder } from '../utils/notify.js'
 import { sendPushToUser } from '../utils/webpush.js'
 import { validateCouponForOrder } from '../utils/coupons.js'
+import { computeOrderPricing } from '../utils/orderPricing.js'
 import { streamInvoicePdf } from '../utils/generateInvoicePdf.js'
 import { issueRefund } from '../utils/refunds.js'
-
-const GST_RATE = 0.025 // 2.5% CGST + 2.5% SGST = 5% total, split evenly
 
 function generateOrderNumber() {
   return `OFS${Math.floor(100000 + Math.random() * 900000)}`
@@ -104,25 +103,13 @@ export const createOrder = asyncHandler(async (req, res) => {
     discountAmount = result.discountAmount
   }
 
-  const taxableAmount = subtotal - discountAmount
-  const cgst = Math.round(taxableAmount * GST_RATE)
-  const sgst = Math.round(taxableAmount * GST_RATE)
-
-  // Free-delivery threshold is based on cart value before any discount —
-  // matches how most grocery apps present it.
-  const deliveryFee = subtotal >= 300 || subtotal === 0 ? 0 : 25
-  const grossTotal = taxableAmount + cgst + sgst + deliveryFee
-
-  // Wallet balance — re-checked here against the real DB value, never
-  // trusted from the client. Applied after tax/delivery, same position a
-  // gift card would sit at. Can cover the order fully (paymentMethod stays
-  // as chosen for record-keeping, but nothing further is actually charged).
-  let walletAmountUsed = 0
-  if (useWallet && req.user.walletBalance > 0) {
-    walletAmountUsed = Math.min(req.user.walletBalance, grossTotal)
-  }
-  const total = grossTotal - walletAmountUsed
-  const fullyCoveredByWallet = total <= 0 && walletAmountUsed > 0
+  const { cgst, sgst, deliveryFee, grossTotal, walletAmountUsed, total, fullyCoveredByWallet } =
+    computeOrderPricing({
+      subtotal,
+      discountAmount,
+      walletBalance: useWallet ? req.user.walletBalance : 0,
+      useWallet,
+    })
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
@@ -353,6 +340,9 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   }
 
   order.status = status
+  if (status === 'out_for_delivery' && !order.outForDeliveryAt) {
+    order.outForDeliveryAt = new Date()
+  }
   if (status === 'delivered' && !order.deliveredAt) {
     order.deliveredAt = new Date()
   }

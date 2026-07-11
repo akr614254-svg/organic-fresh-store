@@ -5,6 +5,7 @@ import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentSe
 import { isPushSupported, isPushSubscribedLocally, subscribeToPush } from '../utils/push'
 import { useCart } from '../context/CartContext'
 import OrderStepper from '../components/OrderStepper'
+import LiveTrackingMap from '../components/LiveTrackingMap'
 
 const STATUS_LABEL = {
   placed: 'Placed',
@@ -214,6 +215,12 @@ export default function Orders() {
             <div className="mb-4 overflow-x-auto">
               <OrderStepper status={order.status} />
             </div>
+
+            {order.status === 'out_for_delivery' && (
+              <div className="mb-4">
+                <LiveTrackingMap order={order} />
+              </div>
+            )}
 
             <div className="text-xs text-charcoal/50 mb-3">
               Delivery: {order.deliveryDate

@@ -1,14 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
+import { clampQty, calcCartTotals, FREE_DELIVERY_THRESHOLD } from '../utils/cartMath'
 
 const CartContext = createContext(null)
 
-const DELIVERY_FEE = 25
-const FREE_DELIVERY_THRESHOLD = 300
-
 export function CartProvider({ children }) {
   const { user } = useAuth()
-  const [items, setItems] = useState([]) // { id, name, price, unit, emoji, qty }
+  const [items, setItems] = useState([]) // { id, name, price, unit, emoji, qty, stock }
   const [isDrawerOpen, setDrawerOpen] = useState(false)
   const previousUserId = useRef(user?._id ?? user?.id ?? null)
 
@@ -28,10 +26,11 @@ export function CartProvider({ children }) {
   const addToCart = (product, qty = 1) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id)
-      const cap = product.stock ?? Infinity
       if (existing) {
         return prev.map((i) =>
-          i.id === product.id ? { ...i, qty: Math.min(i.qty + qty, cap), stock: product.stock } : i
+          i.id === product.id
+            ? { ...i, qty: clampQty(i.qty + qty, product.stock), stock: product.stock }
+            : i
         )
       }
       return [
@@ -43,7 +42,7 @@ export function CartProvider({ children }) {
           unit: product.unit,
           emoji: product.emoji,
           stock: product.stock,
-          qty: Math.min(qty, cap),
+          qty: clampQty(qty, product.stock),
         },
       ]
     })
@@ -55,9 +54,7 @@ export function CartProvider({ children }) {
       removeFromCart(id)
       return
     }
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, qty: Math.min(qty, i.stock ?? Infinity) } : i))
-    )
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: clampQty(qty, i.stock) } : i)))
   }
 
   const removeFromCart = (id) => {
@@ -66,10 +63,7 @@ export function CartProvider({ children }) {
 
   const clearCart = () => setItems([])
 
-  const totalItems = useMemo(() => items.reduce((sum, i) => sum + i.qty, 0), [items])
-  const subtotal = useMemo(() => items.reduce((sum, i) => sum + i.qty * i.price, 0), [items])
-  const deliveryFee = subtotal === 0 || subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
-  const total = subtotal + deliveryFee
+  const { totalItems, subtotal, deliveryFee, total } = useMemo(() => calcCartTotals(items), [items])
 
   const value = {
     items,

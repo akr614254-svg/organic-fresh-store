@@ -63,6 +63,9 @@ const orderSchema = new mongoose.Schema(
       enum: ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled'],
       default: 'placed',
     },
+    // Set the moment status first becomes 'out_for_delivery' — the live
+    // tracking map uses this as t=0 for its simulated route animation.
+    outForDeliveryAt: { type: Date },
     // Set automatically the moment status first becomes 'delivered' — this
     // is what the 1-day return window is measured from, not createdAt.
     deliveredAt: { type: Date },
