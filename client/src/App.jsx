@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HelmetProvider } from 'react-helmet-async'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
 import { WishlistProvider } from './context/WishlistContext'
+import { ThemeProvider } from './context/ThemeContext'
 import MainLayout from './layouts/MainLayout'
 import AdminLayout from './layouts/AdminLayout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -27,10 +29,12 @@ import InstallPrompt from './components/InstallPrompt'
 
 function App() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <WishlistProvider>
-          <BrowserRouter>
+    <HelmetProvider>
+      <ThemeProvider>
+      <AuthProvider>
+        <CartProvider>
+          <WishlistProvider>
+            <BrowserRouter>
             <Routes>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Home />} />
@@ -76,11 +80,13 @@ function App() {
                 <Route path="users" element={<AdminUsers />} />
               </Route>
             </Routes>
-          </BrowserRouter>
-          <InstallPrompt />
-        </WishlistProvider>
-      </CartProvider>
-    </AuthProvider>
+            </BrowserRouter>
+            <InstallPrompt />
+          </WishlistProvider>
+        </CartProvider>
+      </AuthProvider>
+    </ThemeProvider>
+    </HelmetProvider>
   )
 }
 

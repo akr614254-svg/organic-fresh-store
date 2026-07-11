@@ -18,7 +18,10 @@ import adminRoutes from './routes/adminRoutes.js'
 import pushRoutes from './routes/pushRoutes.js'
 import reviewRoutes from './routes/reviewRoutes.js'
 import couponRoutes from './routes/couponRoutes.js'
+import cartRoutes from './routes/cartRoutes.js'
+import sitemapRoutes from './routes/sitemapRoutes.js'
 import { processDueScheduledRefunds } from './utils/refunds.js'
+import { checkAbandonedCarts } from './utils/abandonedCart.js'
 import { apiLimiter, authLimiter } from './middleware/rateLimiter.js'
 
 await connectDB()
@@ -37,6 +40,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'organic-fresh-api' }))
 
+app.use(sitemapRoutes)
+
 app.use('/api', apiLimiter)
 app.use('/api/auth/login', authLimiter)
 app.use('/api/auth/register', authLimiter)
@@ -48,6 +53,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/push', pushRoutes)
 app.use('/api/reviews', reviewRoutes)
 app.use('/api/coupons', couponRoutes)
+app.use('/api/cart', cartRoutes)
 
 app.use(notFound)
 app.use(errorHandler)
@@ -64,6 +70,15 @@ const REFUND_CHECK_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 setInterval(() => {
   processDueScheduledRefunds().catch((err) => console.error('[refund] Background check failed:', err.message))
 }, REFUND_CHECK_INTERVAL_MS)
+
+// Same best-effort caveat as the refund checker above — only runs while
+// the server is awake. Checks every 15 minutes for carts that have sat
+// untouched past ABANDONED_CART_MINUTES (default 60) and sends one
+// push + email nudge per cart.
+const ABANDONED_CART_CHECK_INTERVAL_MS = 15 * 60 * 1000
+setInterval(() => {
+  checkAbandonedCarts().catch((err) => console.error('[cart] Abandoned-cart check failed:', err.message))
+}, ABANDONED_CART_CHECK_INTERVAL_MS)
 
 const PORT = process.env.PORT || 5000
 httpServer.listen(PORT, () => console.log(`Organic Fresh API running on port ${PORT}`))

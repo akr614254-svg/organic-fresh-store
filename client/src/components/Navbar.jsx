@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 const links = [
   { label: 'Home', to: '/' },
@@ -17,6 +18,7 @@ export default function Navbar() {
   const { totalItems, openDrawer } = useCart()
   const { items: wishlistItems } = useWishlist()
   const { user, isAuthenticated, logout } = useAuth()
+  const { isDark, toggleTheme } = useTheme()
 
   return (
     <header className="sticky top-0 z-50 bg-cream/90 backdrop-blur border-b border-forest/10">
@@ -42,6 +44,13 @@ export default function Navbar() {
         </ul>
 
         <div className="hidden md:flex items-center gap-4">
+          <button
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-charcoal/70 hover:text-forest transition-colors text-lg"
+          >
+            {isDark ? '☀️' : '🌙'}
+          </button>
           <Link to="/shop" aria-label="Search" className="text-charcoal/70 hover:text-forest transition-colors text-lg">
             🔍
           </Link>
@@ -56,7 +65,7 @@ export default function Navbar() {
           <button onClick={openDrawer} className="relative text-charcoal/70 hover:text-forest transition-colors text-lg" aria-label="Cart">
             🧺
             {totalItems > 0 && (
-              <span className="absolute -top-1.5 -right-2 bg-turmeric text-white text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
+              <span data-testid="cart-count" className="absolute -top-1.5 -right-2 bg-turmeric text-white text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
                 {totalItems}
               </span>
             )}
@@ -101,10 +110,13 @@ export default function Navbar() {
         </div>
 
         <div className="md:hidden flex items-center gap-4">
+          <button onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} className="text-charcoal/70 text-lg">
+            {isDark ? '☀️' : '🌙'}
+          </button>
           <button onClick={openDrawer} className="relative text-charcoal/70 text-lg" aria-label="Cart">
             🧺
             {totalItems > 0 && (
-              <span className="absolute -top-1.5 -right-2 bg-turmeric text-white text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
+              <span data-testid="cart-count" className="absolute -top-1.5 -right-2 bg-turmeric text-white text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
                 {totalItems}
               </span>
             )}

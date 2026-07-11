@@ -1,5 +1,6 @@
 import asyncHandler from 'express-async-handler'
 import Product from '../models/Product.js'
+import Order from '../models/Order.js'
 
 // @route  GET /api/products?category=leafy&search=palak&page=1&limit=20
 // @access Public
@@ -33,6 +34,36 @@ export const getProductById = asyncHandler(async (req, res) => {
     throw new Error('Product not found')
   }
   res.json(product)
+})
+
+// @route  GET /api/products/legacy/:legacyId/frequently-bought-together
+// @access Public
+// Looks at every past order that included this product and ranks the other
+// items that most often rode along in the same order — a real "customers
+// who bought this also bought" panel, distinct from the "You might also
+// like" section (which is just same-category products) already shown on
+// ProductDetails.
+export const getFrequentlyBoughtTogether = asyncHandler(async (req, res) => {
+  const legacyId = Number(req.params.legacyId)
+  const limit = Number(req.query.limit) || 4
+
+  const rows = await Order.aggregate([
+    { $match: { 'items.legacyId': legacyId, status: { $ne: 'cancelled' } } },
+    { $unwind: '$items' },
+    { $match: { 'items.legacyId': { $ne: legacyId } } },
+    { $group: { _id: '$items.legacyId', count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: limit },
+  ])
+
+  const legacyIds = rows.map((r) => r._id)
+  const products = await Product.find({ legacyId: { $in: legacyIds }, isActive: true })
+
+  // Preserve the co-purchase-frequency ranking, not whatever order Mongo returns them in.
+  const byLegacyId = new Map(products.map((p) => [p.legacyId, p]))
+  const ordered = legacyIds.map((id) => byLegacyId.get(id)).filter(Boolean)
+
+  res.json({ items: ordered })
 })
 
 // @route  POST /api/products

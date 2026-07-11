@@ -14,7 +14,10 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  if (order.user.toString() !== req.user._id.toString()) {
+  // Guest orders have no `user` — anyone holding the (unguessable) order
+  // id can complete payment for it, same trust model most guest-checkout
+  // flows use. Account-owned orders still require the token to match.
+  if (order.user && (!req.user || order.user.toString() !== req.user._id.toString())) {
     res.status(403)
     throw new Error('Not authorized for this order')
   }
@@ -58,7 +61,10 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  if (order.user.toString() !== req.user._id.toString()) {
+  // Guest orders have no `user` — anyone holding the (unguessable) order
+  // id can complete payment for it, same trust model most guest-checkout
+  // flows use. Account-owned orders still require the token to match.
+  if (order.user && (!req.user || order.user.toString() !== req.user._id.toString())) {
     res.status(403)
     throw new Error('Not authorized for this order')
   }

@@ -32,3 +32,11 @@ export async function fetchProductByLegacyId(legacyId) {
   const match = data.items[0]
   return match ? normalize(match) : null
 }
+
+// "Customers who bought this also bought" — ranked by real co-purchase
+// frequency from order history, distinct from the same-category "You might
+// also like" panel.
+export async function fetchFrequentlyBoughtTogether(legacyId) {
+  const { data } = await api.get(`/products/legacy/${legacyId}/frequently-bought-together`)
+  return data.items.map(normalize)
+}

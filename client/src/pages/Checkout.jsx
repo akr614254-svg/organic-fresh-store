@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
-import { placeOrder } from '../services/orderService'
+import { placeOrder, fetchSlotAvailability } from '../services/orderService'
 import { createRazorpayOrder, openRazorpayCheckout } from '../services/paymentService'
 import { validateCoupon } from '../services/couponService'
 import AddressPicker from '../components/AddressPicker'
@@ -33,11 +33,34 @@ export default function Checkout() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', address: '', lat: null, lng: null })
+  const [guestEmail, setGuestEmail] = useState('')
   const [slot, setSlot] = useState(SLOTS[1])
   const [deliveryDate, setDeliveryDate] = useState(todayISODate())
   const [payment, setPayment] = useState('razorpay')
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState(null)
+  const [slotAvailability, setSlotAvailability] = useState(null) // [{slot, remaining, full}]
+
+  // Refresh slot capacity whenever the chosen date changes, and bump the
+  // customer off a slot that just filled up while they were browsing.
+  useEffect(() => {
+    let cancelled = false
+    fetchSlotAvailability(deliveryDate)
+      .then((slots) => {
+        if (cancelled) return
+        setSlotAvailability(slots)
+        const current = slots.find((s) => s.slot === slot)
+        if (current?.full) {
+          const nextOpen = slots.find((s) => !s.full)
+          if (nextOpen) setSlot(nextOpen.slot)
+        }
+      })
+      .catch(() => setSlotAvailability(null)) // fail open — capacity check still runs server-side at submit
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveryDate])
 
   const [couponInput, setCouponInput] = useState('')
   const [coupon, setCoupon] = useState(null) // { code, discountAmount }
@@ -47,7 +70,13 @@ export default function Checkout() {
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
 
-  const canPlaceOrder = form.name.trim() && form.phone.trim() && form.address.trim() && items.length > 0
+  const isValidEmail = (e) => /\S+@\S+\.\S+/.test(e)
+  const canPlaceOrder =
+    form.name.trim() &&
+    form.phone.trim() &&
+    form.address.trim() &&
+    items.length > 0 &&
+    (isAuthenticated || isValidEmail(guestEmail))
 
   // Live preview only — the server recomputes all of this for real at order
   // creation, so a stale/forged number here can never actually be charged.
@@ -64,9 +93,9 @@ export default function Checkout() {
     return <Navigate to="/shop" replace />
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: { pathname: '/checkout' } }} />
-  }
+  // Guest checkout: no more forced redirect to /login. Coupons, wallet
+  // credit, order history, and self-service cancel/return still require an
+  // account, so we nudge (not force) signing in above the guest email field.
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return
@@ -108,6 +137,7 @@ export default function Checkout() {
         paymentMethod: payment,
         couponCode: coupon?.code,
         useWallet,
+        guestEmail: isAuthenticated ? undefined : guestEmail.trim(),
       })
 
       let finalOrder = created
@@ -174,6 +204,25 @@ export default function Checkout() {
           {/* Contact + address */}
           <div>
             <h2 className="font-medium text-forest mb-4">Delivery details</h2>
+
+            {!isAuthenticated && (
+              <div className="flex items-center justify-between gap-3 bg-sprout/15 border border-leaf/20 rounded-xl px-4 py-3 mb-4 text-sm">
+                <span className="text-charcoal/70">
+                  Checking out as a guest — <Link to="/login" state={{ from: { pathname: '/checkout' } }} className="text-leaf font-medium hover:underline">sign in</Link> to earn wallet credit, use coupons, and track this order later.
+                </span>
+              </div>
+            )}
+
+            {!isAuthenticated && (
+              <input
+                required
+                type="email"
+                placeholder="Email address (for your order confirmation)"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                className="w-full bg-white border border-forest/15 rounded-xl px-4 py-3 text-sm outline-none focus-visible:border-leaf mb-4"
+              />
+            )}
 
             {user?.addresses?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
@@ -257,20 +306,28 @@ export default function Checkout() {
           <div>
             <h2 className="font-medium text-forest mb-4">Delivery slot</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {SLOTS.map((s) => (
-                <button
-                  type="button"
-                  key={s}
-                  onClick={() => setSlot(s)}
-                  className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                    slot === s
-                      ? 'bg-forest text-cream border-forest'
-                      : 'bg-white text-charcoal/70 border-forest/15 hover:border-leaf'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+              {SLOTS.map((s) => {
+                const availability = slotAvailability?.find((a) => a.slot === s)
+                const isFull = !!availability?.full
+                const isLow = availability && !isFull && availability.remaining <= 5
+                return (
+                  <button
+                    type="button"
+                    key={s}
+                    disabled={isFull}
+                    onClick={() => setSlot(s)}
+                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      slot === s
+                        ? 'bg-forest text-cream border-forest'
+                        : 'bg-white text-charcoal/70 border-forest/15 hover:border-leaf'
+                    }`}
+                  >
+                    {s}
+                    {isFull && <span className="block text-[10px] font-normal mt-0.5">Fully booked</span>}
+                    {isLow && <span className="block text-[10px] font-normal mt-0.5 text-turmeric">Only {availability.remaining} left</span>}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -339,9 +396,14 @@ export default function Checkout() {
             </div>
           )}
 
-          {/* Coupon */}
+          {/* Coupon — account-only, since the server never applies a coupon
+              to a guest order (see createOrder's effectiveCouponCode) */}
           <div className="border-t border-forest/10 pt-4 mb-2">
-            {coupon ? (
+            {!isAuthenticated ? (
+              <p className="text-xs text-charcoal/40">
+                <Link to="/login" className="text-leaf hover:underline">Sign in</Link> to apply a coupon code.
+              </p>
+            ) : coupon ? (
               <div className="flex items-center justify-between bg-sprout/20 rounded-xl px-3 py-2.5">
                 <div className="text-sm">
                   <span className="font-mono font-medium text-forest">{coupon.code}</span>

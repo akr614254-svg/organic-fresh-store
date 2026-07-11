@@ -16,6 +16,7 @@ export default function ProductCard({ v, index = 0 }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4, delay: (index % 4) * 0.06 }}
+      data-testid="product-card"
       className="relative bg-white rounded-3xl border border-forest/10 p-4 flex flex-col hover:shadow-md transition-shadow"
     >
       {outOfStock ? (
@@ -52,6 +53,7 @@ export default function ProductCard({ v, index = 0 }) {
       <div className="mt-3 flex items-center justify-between">
         <span className="font-mono text-lg text-forest font-medium">₹{v.price}</span>
         <button
+          data-testid="add-to-cart"
           onClick={() => addToCart(v, 1)}
           disabled={outOfStock}
           className="bg-forest text-cream text-xs font-medium px-3 py-2 rounded-full hover:bg-leaf transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-forest"

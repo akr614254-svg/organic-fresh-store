@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useSearchParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import { categories } from '../data/vegetables'
@@ -17,6 +18,7 @@ export default function Products() {
   const [query, setQuery] = useState(params.get('q') || '')
   const [sort, setSort] = useState('popular')
   const [minRating, setMinRating] = useState(0)
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const [vegetables, setVegetables] = useState([])
   const [loading, setLoading] = useState(true)
@@ -46,6 +48,18 @@ export default function Products() {
     else next.set('category', id)
     setParams(next)
   }
+
+  // Lightweight client-side autocomplete — the catalog is small enough
+  // (tens of items) to search entirely in memory, ranked so names starting
+  // with the query beat names that just contain it somewhere in the middle.
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return vegetables
+      .filter((v) => v.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q))
+      .slice(0, 6)
+  }, [query, vegetables])
 
   const results = useMemo(() => {
     if (maxPrice == null) return []
@@ -80,6 +94,10 @@ export default function Products() {
 
   return (
     <section className="max-w-7xl mx-auto px-5 md:px-8 py-10">
+      <Helmet>
+        <title>Shop Fresh Vegetables — Organic Fresh Store</title>
+        <meta name="description" content="Browse our full catalog of organic vegetables and fruit, filter by category and price, and get it delivered in a slot that suits you." />
+      </Helmet>
       <div className="mb-8">
         <span className="text-xs font-mono uppercase tracking-wide text-leaf">Full catalog</span>
         <h1 className="font-display text-3xl md:text-4xl text-forest font-semibold mt-1">
@@ -88,15 +106,43 @@ export default function Products() {
       </div>
 
       {/* Search */}
-      <div className="flex items-center bg-white rounded-full shadow-sm border border-forest/10 p-1.5 max-w-md mb-6">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search spinach, carrots, mint..."
-          className="flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-charcoal/40"
-        />
-        <span className="px-3 text-charcoal/40">🔍</span>
+      <div className="relative max-w-md mb-6">
+        <div className="flex items-center bg-white rounded-full shadow-sm border border-forest/10 p-1.5">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setShowSuggestions(true)
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+            placeholder="Search spinach, carrots, mint..."
+            className="flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-charcoal/40"
+          />
+          <span className="px-3 text-charcoal/40">🔍</span>
+        </div>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <ul className="absolute z-20 mt-1.5 w-full bg-white border border-forest/10 rounded-2xl shadow-lg overflow-hidden">
+            {suggestions.map((v) => (
+              <li key={v.id}>
+                <button
+                  type="button"
+                  onMouseDown={() => {
+                    setQuery(v.name)
+                    setShowSuggestions(false)
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-sprout/20 transition-colors"
+                >
+                  <span className="text-lg">{v.emoji}</span>
+                  <span className="flex-1">{v.name}</span>
+                  <span className="font-mono text-xs text-charcoal/40">₹{v.price}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -104,6 +150,7 @@ export default function Products() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setCategory('all')}
+            data-testid="category-filter"
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
               activeCategory === 'all'
                 ? 'bg-forest text-cream'
@@ -115,6 +162,7 @@ export default function Products() {
           {categories.map((c) => (
             <button
               key={c.id}
+              data-testid="category-filter"
               onClick={() => setCategory(c.id)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 activeCategory === c.id

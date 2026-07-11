@@ -19,7 +19,12 @@ const orderItemSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // Optional to support guest checkout — a guest order has `guestInfo`
+    // instead. Never both unset: createOrder requires one or the other.
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    guestInfo: {
+      email: { type: String, trim: true, lowercase: true },
+    },
     items: { type: [orderItemSchema], required: true, validate: (v) => v.length > 0 },
 
     deliveryAddress: {

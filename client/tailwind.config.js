@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
@@ -10,6 +11,11 @@ export default {
         cream: '#FBF9F1',
         turmeric: '#E8A33D',
         charcoal: '#1F2318',
+        // Dark-mode surface tokens — used only via `dark:` utilities and
+        // the `.dark` overrides in index.css, so the light-mode palette
+        // above is completely untouched.
+        dusk: '#12140D',
+        duskcard: '#1B2016',
       },
       fontFamily: {
         display: ['Fraunces', 'serif'],

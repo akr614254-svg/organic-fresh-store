@@ -1,8 +1,33 @@
 import api from './api'
 
-export async function placeOrder({ items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet }) {
-  const { data } = await api.post('/orders', { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet })
+export async function placeOrder({
+  items,
+  deliveryAddress,
+  deliverySlot,
+  deliveryDate,
+  paymentMethod,
+  couponCode,
+  useWallet,
+  guestEmail,
+}) {
+  const { data } = await api.post('/orders', {
+    items,
+    deliveryAddress,
+    deliverySlot,
+    deliveryDate,
+    paymentMethod,
+    couponCode,
+    useWallet,
+    guestEmail,
+  })
   return data
+}
+
+// Per-slot capacity for a given date, so Checkout can disable a slot once
+// it's full instead of letting the customer find out at submit time.
+export async function fetchSlotAvailability(date) {
+  const { data } = await api.get('/orders/slots', { params: { date } })
+  return data.slots
 }
 
 export async function fetchMyOrders() {

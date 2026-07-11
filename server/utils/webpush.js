@@ -21,6 +21,7 @@ function ensureConfigured() {
 // on. Best-effort: never throws, so a missing VAPID setup or a stale
 // subscription never breaks the order-status update that triggered it.
 export async function sendPushToUser(userId, { title, body, url }) {
+  if (!userId) return // guest orders have no user to push to
   if (!ensureConfigured()) {
     console.warn('[push] Skipping push notification — VAPID keys not configured')
     return

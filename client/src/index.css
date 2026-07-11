@@ -27,3 +27,51 @@ body {
   outline: 2px solid #40916C;
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------------
+   Dark mode
+   ---------------------------------------------------------------------
+   Rather than adding dark: variants to every component individually,
+   these overrides retarget the handful of utility classes the whole app
+   is actually built from (bg-cream/white/sprout, text-charcoal, forest
+   borders) whenever the <html> element has the `.dark` class — toggled
+   by ThemeContext. Brand accent colors (forest, leaf, turmeric) are left
+   alone since they already read fine on a dark surface.
+------------------------------------------------------------------------ */
+.dark body {
+  @apply bg-dusk text-cream/90;
+}
+.dark .bg-cream,
+.dark .bg-cream\/90,
+.dark .bg-cream\/50,
+.dark .bg-cream\/60 {
+  background-color: #12140D !important;
+}
+.dark .bg-white {
+  background-color: #1B2016 !important;
+}
+.dark .bg-sprout\/40,
+.dark .bg-sprout\/30,
+.dark .bg-sprout\/20,
+.dark .bg-sprout\/15 {
+  background-color: rgba(149, 213, 178, 0.12) !important;
+}
+.dark .text-charcoal {
+  color: rgba(251, 249, 241, 0.92) !important;
+}
+.dark .text-charcoal\/80,
+.dark .text-charcoal\/70 {
+  color: rgba(251, 249, 241, 0.7) !important;
+}
+.dark .text-charcoal\/60,
+.dark .text-charcoal\/50 {
+  color: rgba(251, 249, 241, 0.55) !important;
+}
+.dark .text-charcoal\/40,
+.dark .text-charcoal\/30 {
+  color: rgba(251, 249, 241, 0.35) !important;
+}
+.dark .border-forest\/10,
+.dark .border-forest\/15 {
+  border-color: rgba(251, 249, 241, 0.1) !important;
+}

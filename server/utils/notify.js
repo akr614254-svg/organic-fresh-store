@@ -90,3 +90,20 @@ export async function sendTelegramAlert(order) {
 export function notifyAdminsOfNewOrder(order) {
   Promise.allSettled([sendOrderEmail(order), sendTelegramAlert(order)])
 }
+
+// General-purpose customer email, reusing the same SMTP setup as the admin
+// order alert above. Used by the abandoned-cart reminder job. Best-effort
+// like everything else here — never throws.
+export async function sendCustomerEmail(toEmail, subject, text) {
+  const from = process.env.SMTP_USER
+  const mailer = getTransporter()
+  if (!mailer || !toEmail) {
+    console.warn('[notify] Skipping customer email — SMTP not configured or no recipient')
+    return
+  }
+  try {
+    await mailer.sendMail({ from: `"Organic Fresh" <${from}>`, to: toEmail, subject, text })
+  } catch (err) {
+    console.error('[notify] Failed to send customer email:', err.message)
+  }
+}

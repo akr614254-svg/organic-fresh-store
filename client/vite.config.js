@@ -10,4 +10,10 @@ export default defineConfig({
     host: true,
     allowedHosts: true,
   },
+  test: {
+    // e2e/ holds Playwright specs (run via `npm run test:e2e`), not Vitest
+    // ones — without this, Vitest's default glob also picks them up and
+    // fails trying to import '@playwright/test'.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
+  },
 })

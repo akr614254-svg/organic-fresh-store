@@ -14,6 +14,52 @@ function generateOrderNumber() {
   return `OFS${Math.floor(100000 + Math.random() * 900000)}`
 }
 
+// Delivery slots and how many orders each can take per calendar day —
+// mirrors the slot labels used on the client's Checkout page. Keeping this
+// server-side means the cap can never be bypassed by a stale/tampered
+// client, and a single source of truth is shared by both the availability
+// endpoint and the order-creation check below.
+export const DELIVERY_SLOTS = ['7 – 9 AM', '11 AM – 1 PM', '3 – 5 PM', '6 – 8 PM']
+const SLOT_CAPACITY = Number(process.env.SLOT_CAPACITY) || 40
+
+function dayRange(dateInput) {
+  const start = new Date(dateInput)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { start, end }
+}
+
+// @route  GET /api/orders/slots?date=YYYY-MM-DD
+// @access Public — lets Checkout grey out/disable a slot once it's full,
+// before the customer even tries to place the order.
+export const getSlotAvailability = asyncHandler(async (req, res) => {
+  const { date } = req.query
+  if (!date) {
+    res.status(400)
+    throw new Error('A date query param is required')
+  }
+  const { start, end } = dayRange(date)
+
+  const counts = await Order.aggregate([
+    {
+      $match: {
+        deliveryDate: { $gte: start, $lt: end },
+        status: { $ne: 'cancelled' },
+      },
+    },
+    { $group: { _id: '$deliverySlot', count: { $sum: 1 } } },
+  ])
+  const countBySlot = new Map(counts.map((c) => [c._id, c.count]))
+
+  const slots = DELIVERY_SLOTS.map((slot) => {
+    const used = countBySlot.get(slot) || 0
+    return { slot, capacity: SLOT_CAPACITY, remaining: Math.max(0, SLOT_CAPACITY - used), full: used >= SLOT_CAPACITY }
+  })
+
+  res.json({ slots })
+})
+
 // Puts an order's items back into inventory — used when an order is
 // cancelled before shipping, or a return is approved after delivery.
 async function restoreStock(order) {
@@ -28,7 +74,8 @@ async function restoreStock(order) {
 // For now, COD orders are marked pending and Razorpay orders are marked paid
 // once the client confirms a successful checkout.
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet } = req.body
+  const { items, deliveryAddress, deliverySlot, deliveryDate, paymentMethod, couponCode, useWallet, guestEmail } =
+    req.body
 
   if (!items || items.length === 0) {
     res.status(400)
@@ -39,6 +86,20 @@ export const createOrder = asyncHandler(async (req, res) => {
     throw new Error('Delivery name, phone, and address are required')
   }
 
+  // Guest checkout — req.user is only populated when a valid token was
+  // sent (see the optionalAuth middleware on this route). Guests still
+  // need a contact email so the order confirmation/invoice can be looked
+  // up later and so a "create an account" follow-up email is possible.
+  const isGuest = !req.user
+  if (isGuest && !guestEmail) {
+    res.status(400)
+    throw new Error('An email address is required to check out as a guest')
+  }
+  // Coupons and wallet credit are account features — guests skip both
+  // rather than the request failing outright.
+  const effectiveCouponCode = isGuest ? undefined : couponCode
+  const effectiveUseWallet = isGuest ? false : useWallet
+
   // Delivery date — default to today if the client somehow omits it, but
   // never allow a date in the past (clock skew aside, checked to the day).
   const today = new Date()
@@ -47,6 +108,26 @@ export const createOrder = asyncHandler(async (req, res) => {
   if (Number.isNaN(chosenDate.getTime()) || chosenDate < today) {
     res.status(400)
     throw new Error('Please choose a valid delivery date (today or later)')
+  }
+  if (!DELIVERY_SLOTS.includes(deliverySlot)) {
+    res.status(400)
+    throw new Error('Please choose a valid delivery slot')
+  }
+
+  // Enforce the same per-slot, per-day capacity the availability endpoint
+  // reports — checked again here (not just trusted from the client) so a
+  // slot can never be overbooked by a race or a stale page.
+  {
+    const { start, end } = dayRange(chosenDate)
+    const slotCount = await Order.countDocuments({
+      deliverySlot,
+      deliveryDate: { $gte: start, $lt: end },
+      status: { $ne: 'cancelled' },
+    })
+    if (slotCount >= SLOT_CAPACITY) {
+      res.status(409)
+      throw new Error(`The "${deliverySlot}" slot on that date is fully booked — please pick another slot or date.`)
+    }
   }
 
   // Re-price server-side from the database rather than trusting client totals.
@@ -97,8 +178,8 @@ export const createOrder = asyncHandler(async (req, res) => {
   // at checkout, so a forged discount amount can never slip through.
   let discountAmount = 0
   let appliedCoupon = null
-  if (couponCode) {
-    const result = await validateCouponForOrder(couponCode, subtotal)
+  if (effectiveCouponCode) {
+    const result = await validateCouponForOrder(effectiveCouponCode, subtotal)
     appliedCoupon = result.coupon
     discountAmount = result.discountAmount
   }
@@ -107,13 +188,14 @@ export const createOrder = asyncHandler(async (req, res) => {
     computeOrderPricing({
       subtotal,
       discountAmount,
-      walletBalance: useWallet ? req.user.walletBalance : 0,
-      useWallet,
+      walletBalance: effectiveUseWallet ? req.user.walletBalance : 0,
+      useWallet: effectiveUseWallet,
     })
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
-    user: req.user._id,
+    user: isGuest ? undefined : req.user._id,
+    guestInfo: isGuest ? { email: guestEmail } : undefined,
     items: orderItems,
     deliveryAddress: {
       name: deliveryAddress.name,
@@ -140,7 +222,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     paymentStatus: fullyCoveredByWallet ? 'paid' : 'pending',
   })
 
-  if (walletAmountUsed > 0) {
+  if (walletAmountUsed > 0 && !isGuest) {
     await User.findByIdAndUpdate(req.user._id, { $inc: { walletBalance: -walletAmountUsed } })
   }
 
@@ -179,7 +261,7 @@ export const cancelOrder = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  if (order.user.toString() !== req.user._id.toString()) {
+  if (!order.user || order.user.toString() !== req.user._id.toString()) {
     res.status(403)
     throw new Error('Not authorized to cancel this order')
   }
@@ -205,7 +287,7 @@ export const requestReturn = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  if (order.user.toString() !== req.user._id.toString()) {
+  if (!order.user || order.user.toString() !== req.user._id.toString()) {
     res.status(403)
     throw new Error('Not authorized for this order')
   }
@@ -299,7 +381,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  const isOwner = order.user.toString() === req.user._id.toString()
+  const isOwner = order.user && order.user.toString() === req.user._id.toString()
   if (!isOwner && req.user.role !== 'admin') {
     res.status(403)
     throw new Error('Not authorized to view this order')
@@ -394,7 +476,7 @@ export const downloadInvoice = asyncHandler(async (req, res) => {
     res.status(404)
     throw new Error('Order not found')
   }
-  const isOwner = order.user.toString() === req.user._id.toString()
+  const isOwner = order.user && order.user.toString() === req.user._id.toString()
   if (!isOwner && req.user.role !== 'admin') {
     res.status(403)
     throw new Error('Not authorized to view this invoice')

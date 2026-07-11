@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { Link, useParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import StarRating from '../components/StarRating'
 import { categories } from '../data/vegetables'
-import { fetchProductByLegacyId, fetchAllProducts } from '../services/productService'
+import { fetchProductByLegacyId, fetchAllProducts, fetchFrequentlyBoughtTogether } from '../services/productService'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import { useAuth } from '../context/AuthContext'
@@ -13,6 +14,7 @@ export default function ProductDetails() {
   const { id } = useParams()
   const [product, setProduct] = useState(null)
   const [related, setRelated] = useState([])
+  const [boughtTogether, setBoughtTogether] = useState([])
   const [loading, setLoading] = useState(true)
   const [qty, setQty] = useState(1)
   const { addToCart } = useCart()
@@ -38,6 +40,9 @@ export default function ProductDetails() {
         if (p) {
           const all = await fetchAllProducts()
           setRelated(all.filter((v) => v.category === p.category && v.id !== p.id).slice(0, 4))
+          fetchFrequentlyBoughtTogether(p.id)
+            .then(setBoughtTogether)
+            .catch(() => setBoughtTogether([]))
         }
       })
       .catch(() => setProduct(null))
@@ -127,6 +132,10 @@ export default function ProductDetails() {
 
   return (
     <section className="max-w-6xl mx-auto px-5 md:px-8 py-10">
+      <Helmet>
+        <title>{product.name} — Organic Fresh Store</title>
+        <meta name="description" content={`Buy fresh ${product.name} online, ₹${product.price} per ${product.unit}. Organic, locally sourced, delivered to your door.`} />
+      </Helmet>
       <nav className="text-sm text-charcoal/50 mb-6">
         <Link to="/" className="hover:text-leaf">Home</Link>
         <span className="mx-2">/</span>
@@ -284,6 +293,20 @@ export default function ProductDetails() {
           ))}
         </div>
       </div>
+
+      {boughtTogether.length > 0 && (
+        <div className="mt-16">
+          <h2 className="font-display text-2xl text-forest font-semibold mb-1">
+            Frequently bought together
+          </h2>
+          <p className="text-sm text-charcoal/50 mb-6">Based on what other customers ordered alongside this.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+            {boughtTogether.map((v, i) => (
+              <ProductCard v={v} index={i} key={v.id} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {related.length > 0 && (
         <div className="mt-16">

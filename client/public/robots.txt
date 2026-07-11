@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /account
+Disallow: /orders
+
+# Generated dynamically by the API server (server/routes/sitemapRoutes.js),
+# not this static file — see CLIENT_URL / API base in deployment config.
+Sitemap: /sitemap.xml
